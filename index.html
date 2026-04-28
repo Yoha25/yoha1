@@ -901,6 +901,27 @@
 
             <!-- Dashboard -->
             <section class="page active" id="page-dashboard">
+                <div class="card" style="margin-bottom:18px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                        <span style="color:var(--text-soft); font-weight:500; font-size:0.9rem;">טווח זמן:</span>
+                        <div class="toggle-group" id="dashRangeToggle">
+                            <button data-r="thisMonth" class="active">החודש</button>
+                            <button data-r="lastMonth">חודש קודם</button>
+                            <button data-r="last3">3 חודשים</button>
+                            <button data-r="last6">6 חודשים</button>
+                            <button data-r="ytd">מתחילת השנה</button>
+                            <button data-r="all">הכל</button>
+                            <button data-r="custom">מותאם</button>
+                        </div>
+                        <div id="dashRangeCustom" style="display:none; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <input class="input" type="date" id="dashRangeFrom" style="width:auto; padding:6px 10px;">
+                            <span style="color:var(--text-faint);">–</span>
+                            <input class="input" type="date" id="dashRangeTo" style="width:auto; padding:6px 10px;">
+                            <button class="btn btn-sm btn-primary" id="dashRangeApply">החל</button>
+                        </div>
+                        <span style="color:var(--text-faint); font-size:0.85rem; margin-inline-start:auto;" id="dashRangeLabel"></span>
+                    </div>
+                </div>
                 <div class="dashboard-grid">
                     <div class="card stat-card month-summary-card">
                         <div class="stat-label">מאזן החודש</div>
@@ -1387,52 +1408,156 @@
             return d.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
         }
 
-        function renderDashboard() {
+        // ========== Dashboard time-range ==========
+        const DASH_RANGE_KEY = 'finance_dash_range_v1';
+        let dashRange = (() => {
+            try {
+                const r = JSON.parse(localStorage.getItem(DASH_RANGE_KEY));
+                if (r && typeof r.mode === 'string') return r;
+            } catch {}
+            return { mode: 'thisMonth', from: null, to: null };
+        })();
+
+        function saveDashRange() {
+            try { localStorage.setItem(DASH_RANGE_KEY, JSON.stringify(dashRange)); } catch {}
+        }
+
+        function getDashRangeBounds() {
             const now = new Date();
-            const thisMonthStart = isoFor(startOfMonth(now));
-            const lastMonthStart = isoFor(startOfMonth(addMonths(now, -1)));
-            const lastMonthEnd   = isoFor(new Date(now.getFullYear(), now.getMonth(), 0));
+            const today = isoFor(now);
+            switch (dashRange.mode) {
+                case 'thisMonth':
+                    return { from: isoFor(startOfMonth(now)), to: today };
+                case 'lastMonth': {
+                    const lm = startOfMonth(addMonths(now, -1));
+                    const lmEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                    return { from: isoFor(lm), to: isoFor(lmEnd) };
+                }
+                case 'last3':
+                    return { from: isoFor(startOfMonth(addMonths(now, -2))), to: today };
+                case 'last6':
+                    return { from: isoFor(startOfMonth(addMonths(now, -5))), to: today };
+                case 'ytd':
+                    return { from: `${now.getFullYear()}-01-01`, to: today };
+                case 'all':
+                    return { from: null, to: null };
+                case 'custom':
+                    return { from: dashRange.from || null, to: dashRange.to || null };
+                default:
+                    return { from: isoFor(startOfMonth(now)), to: today };
+            }
+        }
 
-            // ---- Recurring & installments (monthly equivalents, used in totals + per-card stats) ----
+        function dashRangeDisplayLabel() {
+            const b = getDashRangeBounds();
+            switch (dashRange.mode) {
+                case 'thisMonth': return monthLabel(new Date());
+                case 'lastMonth': return monthLabel(addMonths(new Date(), -1));
+                case 'last3':     return '3 חודשים אחרונים';
+                case 'last6':     return '6 חודשים אחרונים';
+                case 'ytd':       return 'מתחילת השנה';
+                case 'all':       return 'כל הזמנים';
+                case 'custom':    return `${b.from ? formatDate(b.from) : '∞'} – ${b.to ? formatDate(b.to) : 'היום'}`;
+            }
+            return '';
+        }
+
+        // Inclusive count of months between two dates (Y-M precision)
+        function monthsBetween(start, end) {
+            return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+        }
+
+        // How much an active recurring would have cost during [from, to]
+        function recurringCostInRange(rec, fromISO, toISO) {
+            if (!rec.active) return 0;
+            if (!rec.startDate) return 0;
+            const monthly = monthlyEquivalent(rec);
+            const recStart = new Date(rec.startDate + 'T00:00:00');
+            const rangeStart = fromISO ? new Date(fromISO + 'T00:00:00') : recStart;
+            const effStart = recStart > rangeStart ? recStart : rangeStart;
+            const effEnd = toISO ? new Date(toISO + 'T00:00:00') : new Date();
+            if (effStart > effEnd) return 0;
+            const months = monthsBetween(effStart, effEnd);
+            return monthly * Math.max(0, months);
+        }
+
+        // Sum of installment payments that already happened during [from, to]
+        function installmentCostInRange(p, fromISO, toISO) {
+            if (!p.startDate) return 0;
+            const start = new Date(p.startDate + 'T00:00:00');
+            const monthly = Number(p.monthlyAmount);
+            let total = 0;
+            for (let i = 0; i < p.currentPayment; i++) {
+                const d = new Date(start);
+                d.setMonth(d.getMonth() + i);
+                const iso = isoFor(d);
+                if (fromISO && iso < fromISO) continue;
+                if (toISO && iso > toISO) continue;
+                total += monthly;
+            }
+            return total;
+        }
+
+        function renderDashboard() {
+            const bounds = getDashRangeBounds();
+            const isMonthMode = dashRange.mode === 'thisMonth' || dashRange.mode === 'lastMonth';
+
+            // ---- Recurring & installments (per-card stats are always the current monthly rate) ----
             const recActiveList = state.recurring.filter(r => r.active);
-            const recMonthly = recActiveList.reduce((s, r) => s + monthlyEquivalent(r), 0);
-            const recActive = recActiveList.length;
-
+            const recMonthlyRate = recActiveList.reduce((s, r) => s + monthlyEquivalent(r), 0);
             const instActiveList = state.installments.filter(p => p.currentPayment < p.totalPayments);
-            const instMonthly = instActiveList.reduce((s, p) => s + Number(p.monthlyAmount), 0);
-            const instActive = instActiveList.length;
+            const instMonthlyRate = instActiveList.reduce((s, p) => s + Number(p.monthlyAmount), 0);
 
-            // ---- This month income/expense ----
-            const monthTx = state.transactions.filter(t => isInMonth(t.date, now));
-            const monthIncome = monthTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
-            const monthExpenseTx = monthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
-            const monthExpense = monthExpenseTx + recMonthly + instMonthly;
-            const monthBalance = monthIncome - monthExpense;
+            // ---- Recurring + installment cost during the chosen range ----
+            const recCostInRange = state.recurring.reduce((s, r) => s + recurringCostInRange(r, bounds.from, bounds.to), 0);
+            const instCostInRange = state.installments.reduce((s, p) => s + installmentCostInRange(p, bounds.from, bounds.to), 0);
+            const fixedInRange = recCostInRange + instCostInRange;
 
-            // ---- Last month for comparison ----
-            // recurring/installments are constant per month, so the comparison delta still
-            // reflects only transaction-driven change (we add the same constants on both sides).
-            const lastMonthTx = state.transactions.filter(t => t.date >= lastMonthStart && t.date <= lastMonthEnd);
-            const lastMonthIncome = lastMonthTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
-            const lastMonthExpenseTx = lastMonthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
-            const lastMonthExpense = lastMonthExpenseTx + recMonthly + instMonthly;
+            // ---- Transactions in range ----
+            const rangeTx = state.transactions.filter(t => txInRange(t, bounds.from, bounds.to));
+            const rangeIncome = rangeTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+            const rangeExpenseTx = rangeTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+            const rangeExpense = rangeExpenseTx + fixedInRange;
+            const rangeBalance = rangeIncome - rangeExpense;
 
+            // ---- Stat cards: balance / income / expense ----
+            const rangeText = dashRangeDisplayLabel();
             const balEl = document.getElementById('statBalance');
-            balEl.textContent = (monthBalance >= 0 ? '+' : '−') + fmtCurrency(Math.abs(monthBalance));
-            balEl.style.color = monthBalance >= 0 ? 'var(--income)' : 'var(--expense)';
-            document.getElementById('statBalanceSub').textContent = `${monthLabel(now)} · כולל מנויים ותשלומים`;
+            balEl.textContent = (rangeBalance >= 0 ? '+' : '−') + fmtCurrency(Math.abs(rangeBalance));
+            balEl.style.color = rangeBalance >= 0 ? 'var(--income)' : 'var(--expense)';
+            document.getElementById('statBalanceSub').textContent = `${rangeText} · כולל מנויים ותשלומים`;
 
-            document.getElementById('statIncome').textContent = fmtCurrency(monthIncome);
-            document.getElementById('statIncomeSub').innerHTML = changeText(monthIncome, lastMonthIncome, 'מהחודש שעבר');
+            document.getElementById('statIncome').textContent = fmtCurrency(rangeIncome);
+            document.getElementById('statExpense').textContent = fmtCurrency(rangeExpense);
 
-            document.getElementById('statExpense').textContent = fmtCurrency(monthExpense);
-            const expSubChange = changeText(monthExpense, lastMonthExpense, 'מהחודש שעבר', true);
-            const fixedNote = (recMonthly + instMonthly) > 0
-                ? `<div style="font-size:0.72rem; color:var(--text-faint); margin-top:2px;">כולל ${fmtCurrency(recMonthly + instMonthly)} קבועים</div>`
-                : '';
-            document.getElementById('statExpenseSub').innerHTML = expSubChange + fixedNote;
+            // Comparison vs previous period (only in month modes — meaningful)
+            if (isMonthMode) {
+                const refMonth = dashRange.mode === 'thisMonth' ? new Date() : addMonths(new Date(), -1);
+                const prevStart = isoFor(startOfMonth(addMonths(refMonth, -1)));
+                const prevEnd = isoFor(new Date(refMonth.getFullYear(), refMonth.getMonth(), 0));
+                const prevTx = state.transactions.filter(t => t.date >= prevStart && t.date <= prevEnd);
+                const prevIncome = prevTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+                const prevExpenseTx = prevTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+                const prevRecCost = state.recurring.reduce((s,r) => s + recurringCostInRange(r, prevStart, prevEnd), 0);
+                const prevInstCost = state.installments.reduce((s,p) => s + installmentCostInRange(p, prevStart, prevEnd), 0);
+                const prevExpense = prevExpenseTx + prevRecCost + prevInstCost;
+                document.getElementById('statIncomeSub').innerHTML = changeText(rangeIncome, prevIncome, 'מהתקופה הקודמת');
+                const expChange = changeText(rangeExpense, prevExpense, 'מהתקופה הקודמת', true);
+                const fixedNote = fixedInRange > 0
+                    ? `<div style="font-size:0.72rem; color:var(--text-faint); margin-top:2px;">כולל ${fmtCurrency(fixedInRange)} קבועים</div>`
+                    : '';
+                document.getElementById('statExpenseSub').innerHTML = expChange + fixedNote;
+            } else {
+                const days = bounds.from && bounds.to
+                    ? Math.max(1, Math.round((new Date(bounds.to+'T00:00:00') - new Date(bounds.from+'T00:00:00'))/(1000*60*60*24))+1)
+                    : null;
+                const incNote = `${rangeTx.filter(t=>t.type==='income').length} תנועות${days ? ' · ' + days + ' ימים' : ''}`;
+                const expNote = `${rangeTx.filter(t=>t.type==='expense').length} תנועות${fixedInRange > 0 ? ' · כולל ' + fmtCurrency(fixedInRange) + ' קבועים' : ''}`;
+                document.getElementById('statIncomeSub').innerHTML = incNote;
+                document.getElementById('statExpenseSub').innerHTML = expNote;
+            }
 
-            // ---- Investments ----
+            // ---- Investments (always current snapshot) ----
             const invInvested = state.investments.reduce((s,i)=>s+Number(i.amount),0);
             const invValue    = state.investments.reduce((s,i)=>s+Number(i.currentValue),0);
             const invPL = invValue - invInvested;
@@ -1441,7 +1566,7 @@
                 ? `${invPL >= 0 ? '+' : '−'}${fmtCurrency(Math.abs(invPL))} (${(invPL/invInvested*100).toFixed(1)}%)`
                 : '—';
 
-            // ---- Debts ----
+            // ---- Debts (always current snapshot) ----
             const owedToMe = state.debts.filter(d => d.type==='owed').reduce((s,d)=>s+Number(d.currentBalance),0);
             const iOwe = state.debts.filter(d => d.type==='owe').reduce((s,d)=>s+Number(d.currentBalance),0);
             const owedOpen = state.debts.filter(d => d.type==='owed' && d.currentBalance>0).length;
@@ -1451,23 +1576,36 @@
             document.getElementById('statIOwe').textContent = fmtCurrency(iOwe);
             document.getElementById('statOweSub').textContent = `${iOweOpen} חובות פתוחים`;
 
-            // ---- Recurring & installments cards ----
-            document.getElementById('statRecMonthly').textContent = fmtCurrency(recMonthly);
-            document.getElementById('statRecSub').textContent = `${recActive} מנויים פעילים`;
-            document.getElementById('statInstMonthly').textContent = fmtCurrency(instMonthly);
-            document.getElementById('statInstSub').textContent = `${instActive} תוכניות פעילות`;
+            // ---- Recurring & installments cards (current monthly rate) ----
+            document.getElementById('statRecMonthly').textContent = fmtCurrency(recMonthlyRate);
+            document.getElementById('statRecSub').textContent = `${recActiveList.length} מנויים פעילים`;
+            document.getElementById('statInstMonthly').textContent = fmtCurrency(instMonthlyRate);
+            document.getElementById('statInstSub').textContent = `${instActiveList.length} תוכניות פעילות`;
 
-            // ---- Categories breakdown for this month (incl. recurring + installments) ----
-            renderDashCategories(monthTx, recActiveList, instActiveList);
-            document.getElementById('dashMonthLabel').textContent = monthLabel(now);
+            // ---- Categories breakdown ----
+            renderDashCategories(rangeTx, bounds);
+            document.getElementById('dashMonthLabel').textContent = rangeText;
 
-            // ---- Recent transactions ----
+            // ---- Range label + custom inputs ----
+            const labelEl = document.getElementById('dashRangeLabel');
+            if (labelEl) labelEl.textContent = rangeText;
+            const customWrap = document.getElementById('dashRangeCustom');
+            if (customWrap) {
+                customWrap.style.display = dashRange.mode === 'custom' ? 'inline-flex' : 'none';
+                if (dashRange.mode === 'custom') {
+                    document.getElementById('dashRangeFrom').value = dashRange.from || '';
+                    document.getElementById('dashRangeTo').value = dashRange.to || '';
+                }
+            }
+            document.querySelectorAll('#dashRangeToggle button').forEach(b => b.classList.toggle('active', b.dataset.r === dashRange.mode));
+
+            // ---- Recent transactions (always recent regardless of range) ----
             renderDashRecent();
 
-            // ---- Net worth ----
+            // ---- Net worth (current snapshot) ----
             renderNetWorth({ invValue, owedToMe, iOwe, instRemaining: state.installments.reduce((s,p)=>s+instTotals(p).remaining,0) });
 
-            // ---- Upcoming ----
+            // ---- Upcoming (always next 30 days) ----
             renderUpcoming();
         }
 
@@ -1482,10 +1620,11 @@
             return `<span style="color:${color}">${arrow} ${Math.abs(pct).toFixed(0)}%</span> ${suffix}`;
         }
 
-        function renderDashCategories(monthTx, recActiveList = [], instActiveList = []) {
+        function renderDashCategories(rangeTx, bounds) {
             const container = document.getElementById('dashCategories');
             const map = {};
             const bump = (catId, amount, kind) => {
+                if (!(amount > 0)) return;
                 const c = getCategory(catId);
                 if (!c) return;
                 map[c.id] = map[c.id] || { cat: c, total: 0, fromTx: 0, fromRec: 0, fromInst: 0 };
@@ -1495,9 +1634,9 @@
                 else if (kind === 'inst') map[c.id].fromInst += amount;
             };
 
-            for (const t of monthTx.filter(t => t.type === 'expense')) bump(t.categoryId, Number(t.amount), 'tx');
-            for (const r of recActiveList) bump(r.categoryId, monthlyEquivalent(r), 'rec');
-            for (const p of instActiveList) bump(p.categoryId, Number(p.monthlyAmount), 'inst');
+            for (const t of rangeTx.filter(t => t.type === 'expense')) bump(t.categoryId, Number(t.amount), 'tx');
+            for (const r of state.recurring) bump(r.categoryId, recurringCostInRange(r, bounds.from, bounds.to), 'rec');
+            for (const p of state.installments) bump(p.categoryId, installmentCostInRange(p, bounds.from, bounds.to), 'inst');
 
             const items = Object.values(map).sort((a,b) => b.total - a.total);
             if (!items.length) {
@@ -1720,6 +1859,23 @@
             cmpState.sort = b.dataset.sort;
             document.querySelectorAll('#cmpSort button').forEach(x => x.classList.toggle('active', x === b));
             renderComparison();
+        });
+
+        // ---- Wire dashboard range selector ----
+        document.getElementById('dashRangeToggle').addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            dashRange = { ...dashRange, mode: b.dataset.r };
+            if (dashRange.mode !== 'custom') { dashRange.from = null; dashRange.to = null; }
+            saveDashRange();
+            renderDashboard();
+        });
+        document.getElementById('dashRangeApply').addEventListener('click', () => {
+            const f = document.getElementById('dashRangeFrom').value || null;
+            const t = document.getElementById('dashRangeTo').value || null;
+            if (f && t && f > t) { showToast('תאריך התחלה חייב להיות לפני תאריך סיום'); return; }
+            dashRange = { mode: 'custom', from: f, to: t };
+            saveDashRange();
+            renderDashboard();
         });
 
         renderDashboard();
