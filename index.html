@@ -649,6 +649,78 @@
             vertical-align: middle;
         }
 
+        /* Comparison */
+        .compare-row {
+            display: grid;
+            grid-template-columns: 38px 1fr;
+            gap: 12px;
+            align-items: center;
+            padding: 10px 4px;
+        }
+        .compare-row + .compare-row { border-top: 1px solid var(--border-soft); }
+        .compare-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+        }
+        .compare-meta .name { font-weight: 500; }
+        .compare-meta .val { color: var(--text-soft); font-variant-numeric: tabular-nums; }
+        .compare-bar {
+            height: 10px;
+            border-radius: 99px;
+            background: var(--surface-2);
+            overflow: hidden;
+        }
+        .compare-bar > div {
+            height: 100%;
+            border-radius: 99px;
+            transition: width 0.4s;
+        }
+
+        /* Dashboard sections */
+        .dash-cols {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 18px;
+            margin-top: 18px;
+        }
+        @media (max-width: 880px) {
+            .dash-cols { grid-template-columns: 1fr; }
+        }
+        .mini-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-soft);
+            gap: 10px;
+        }
+        .mini-row:last-child { border-bottom: none; }
+        .mini-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .mini-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            display: grid;
+            place-items: center;
+            font-size: 0.95rem;
+            flex-shrink: 0;
+        }
+        .mini-text { min-width: 0; }
+        .mini-text .t { font-weight: 500; font-size: 0.9rem; }
+        .mini-text .s { font-size: 0.74rem; color: var(--text-faint); margin-top: 1px; }
+
+        .month-summary-card {
+            background: linear-gradient(135deg, var(--primary-soft), #f0e7ff);
+            border-color: transparent;
+        }
+
         /* Modal */
         .modal-backdrop {
             position: fixed;
@@ -808,31 +880,71 @@
             <!-- Dashboard -->
             <section class="page active" id="page-dashboard">
                 <div class="dashboard-grid">
-                    <div class="card stat-card">
-                        <div class="stat-label">יתרה כוללת</div>
+                    <div class="card stat-card month-summary-card">
+                        <div class="stat-label">מאזן החודש</div>
                         <div class="stat-value" id="statBalance">₪0</div>
-                        <div class="stat-sub">הכנסות פחות הוצאות</div>
+                        <div class="stat-sub" id="statBalanceSub">הכנסות פחות הוצאות</div>
                     </div>
                     <div class="card stat-card">
                         <div class="stat-label">הכנסות החודש</div>
                         <div class="stat-value" style="color: var(--income)" id="statIncome">₪0</div>
-                        <div class="stat-sub">סך הכל החודש</div>
+                        <div class="stat-sub" id="statIncomeSub">—</div>
                     </div>
                     <div class="card stat-card">
                         <div class="stat-label">הוצאות החודש</div>
                         <div class="stat-value" style="color: var(--expense)" id="statExpense">₪0</div>
-                        <div class="stat-sub">סך הכל החודש</div>
+                        <div class="stat-sub" id="statExpenseSub">—</div>
                     </div>
                     <div class="card stat-card">
-                        <div class="stat-label">השקעות</div>
+                        <div class="stat-label">שווי השקעות</div>
                         <div class="stat-value" style="color: var(--info)" id="statInvest">₪0</div>
-                        <div class="stat-sub">שווי כולל</div>
+                        <div class="stat-sub" id="statInvestSub">—</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">חייבים לי</div>
+                        <div class="stat-value" style="color: var(--debt-in)" id="statOwedToMe">₪0</div>
+                        <div class="stat-sub" id="statOwedSub">—</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">אני חייב</div>
+                        <div class="stat-value" style="color: var(--debt-out)" id="statIOwe">₪0</div>
+                        <div class="stat-sub" id="statOweSub">—</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">מנויים חודשי</div>
+                        <div class="stat-value" id="statRecMonthly">₪0</div>
+                        <div class="stat-sub" id="statRecSub">—</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">תשלומים חודשי</div>
+                        <div class="stat-value" id="statInstMonthly">₪0</div>
+                        <div class="stat-sub" id="statInstSub">—</div>
                     </div>
                 </div>
-                <div class="card">
-                    <div class="empty-state">
-                        <div class="emoji">📊</div>
-                        <div>הדשבורד יתמלא בנתונים אמיתיים בחלק האחרון</div>
+
+                <div class="dash-cols">
+                    <div class="card">
+                        <div class="section-title">
+                            <span>הוצאות החודש לפי קטגוריה</span>
+                            <span style="font-size:0.8rem; color:var(--text-faint); font-weight:400;" id="dashMonthLabel"></span>
+                        </div>
+                        <div id="dashCategories"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="section-title"><span>תנועות אחרונות</span></div>
+                        <div id="dashRecent"></div>
+                    </div>
+                </div>
+
+                <div class="dash-cols">
+                    <div class="card">
+                        <div class="section-title"><span>שווי נטו (תמונה כוללת)</span></div>
+                        <div id="dashNetWorth"></div>
+                    </div>
+                    <div class="card">
+                        <div class="section-title"><span>מבט קדימה</span></div>
+                        <div id="dashUpcoming"></div>
                     </div>
                 </div>
             </section>
@@ -1038,6 +1150,31 @@
             <section class="page" id="page-categories">
                 <div class="card" style="margin-bottom:18px">
                     <div class="section-title">
+                        <span>השוואת קטגוריות</span>
+                    </div>
+                    <div class="filters">
+                        <div class="toggle-group" id="cmpType">
+                            <button data-type="expense" class="active">הוצאות</button>
+                            <button data-type="income">הכנסות</button>
+                        </div>
+                        <div class="toggle-group" id="cmpPeriod">
+                            <button data-period="month" class="active">החודש</button>
+                            <button data-period="3m">3 חודשים</button>
+                            <button data-period="6m">6 חודשים</button>
+                            <button data-period="ytd">השנה</button>
+                            <button data-period="all">הכל</button>
+                        </div>
+                        <div class="toggle-group" id="cmpSort">
+                            <button data-sort="amount" class="active">לפי סכום</button>
+                            <button data-sort="count">לפי מספר תנועות</button>
+                        </div>
+                    </div>
+                    <div id="cmpSummary" style="margin-bottom:12px; font-size:0.88rem; color:var(--text-soft)"></div>
+                    <div id="cmpList"></div>
+                </div>
+
+                <div class="card" style="margin-bottom:18px">
+                    <div class="section-title">
                         <span>קטגוריות הוצאה</span>
                         <button class="btn btn-primary btn-sm" id="addExpCatBtn">+ קטגוריה חדשה</button>
                     </div>
@@ -1165,15 +1302,345 @@
         });
 
         // ========== Initial render ==========
-        function renderDashboard() {
-            // Placeholder - will be filled in last part
-            document.getElementById('statBalance').textContent = fmtCurrency(0);
-            document.getElementById('statIncome').textContent = fmtCurrency(0);
-            document.getElementById('statExpense').textContent = fmtCurrency(0);
-            document.getElementById('statInvest').textContent = fmtCurrency(0);
+        function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+        function isInMonth(iso, ref = new Date()) {
+            return iso && iso.startsWith(monthKey(ref));
+        }
+        function startOfMonth(d = new Date()) {
+            return new Date(d.getFullYear(), d.getMonth(), 1);
+        }
+        function addMonths(d, n) {
+            const nd = new Date(d); nd.setMonth(nd.getMonth() + n); return nd;
+        }
+        function isoFor(d) {
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
 
+        function txInRange(t, fromISO, toISO) {
+            if (fromISO && t.date < fromISO) return false;
+            if (toISO && t.date > toISO) return false;
+            return true;
+        }
+
+        function monthLabel(d) {
+            return d.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+        }
+
+        function renderDashboard() {
+            const now = new Date();
+            const thisMonthStart = isoFor(startOfMonth(now));
+            const lastMonthStart = isoFor(startOfMonth(addMonths(now, -1)));
+            const lastMonthEnd   = isoFor(new Date(now.getFullYear(), now.getMonth(), 0));
+
+            // ---- This month income/expense ----
+            const monthTx = state.transactions.filter(t => isInMonth(t.date, now));
+            const monthIncome = monthTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+            const monthExpense = monthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+            const monthBalance = monthIncome - monthExpense;
+
+            // ---- Last month for comparison ----
+            const lastMonthTx = state.transactions.filter(t => t.date >= lastMonthStart && t.date <= lastMonthEnd);
+            const lastMonthIncome = lastMonthTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+            const lastMonthExpense = lastMonthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+
+            const balEl = document.getElementById('statBalance');
+            balEl.textContent = (monthBalance >= 0 ? '+' : '−') + fmtCurrency(Math.abs(monthBalance));
+            balEl.style.color = monthBalance >= 0 ? 'var(--income)' : 'var(--expense)';
+            document.getElementById('statBalanceSub').textContent = `${monthLabel(now)} · הכנסות פחות הוצאות`;
+
+            document.getElementById('statIncome').textContent = fmtCurrency(monthIncome);
+            document.getElementById('statIncomeSub').innerHTML = changeText(monthIncome, lastMonthIncome, 'מהחודש שעבר');
+
+            document.getElementById('statExpense').textContent = fmtCurrency(monthExpense);
+            document.getElementById('statExpenseSub').innerHTML = changeText(monthExpense, lastMonthExpense, 'מהחודש שעבר', true);
+
+            // ---- Investments ----
+            const invInvested = state.investments.reduce((s,i)=>s+Number(i.amount),0);
+            const invValue    = state.investments.reduce((s,i)=>s+Number(i.currentValue),0);
+            const invPL = invValue - invInvested;
+            document.getElementById('statInvest').textContent = fmtCurrency(invValue);
+            document.getElementById('statInvestSub').textContent = invInvested > 0
+                ? `${invPL >= 0 ? '+' : '−'}${fmtCurrency(Math.abs(invPL))} (${(invPL/invInvested*100).toFixed(1)}%)`
+                : '—';
+
+            // ---- Debts ----
+            const owedToMe = state.debts.filter(d => d.type==='owed').reduce((s,d)=>s+Number(d.currentBalance),0);
+            const iOwe = state.debts.filter(d => d.type==='owe').reduce((s,d)=>s+Number(d.currentBalance),0);
+            const owedOpen = state.debts.filter(d => d.type==='owed' && d.currentBalance>0).length;
+            const iOweOpen = state.debts.filter(d => d.type==='owe' && d.currentBalance>0).length;
+            document.getElementById('statOwedToMe').textContent = fmtCurrency(owedToMe);
+            document.getElementById('statOwedSub').textContent = `${owedOpen} חובות פתוחים`;
+            document.getElementById('statIOwe').textContent = fmtCurrency(iOwe);
+            document.getElementById('statOweSub').textContent = `${iOweOpen} חובות פתוחים`;
+
+            // ---- Recurring & installments ----
+            const recMonthly = state.recurring.filter(r => r.active).reduce((s,r) => s + monthlyEquivalent(r), 0);
+            const recActive = state.recurring.filter(r => r.active).length;
+            document.getElementById('statRecMonthly').textContent = fmtCurrency(recMonthly);
+            document.getElementById('statRecSub').textContent = `${recActive} מנויים פעילים`;
+
+            const instMonthly = state.installments
+                .filter(p => p.currentPayment < p.totalPayments)
+                .reduce((s,p) => s + Number(p.monthlyAmount), 0);
+            const instActive = state.installments.filter(p => p.currentPayment < p.totalPayments).length;
+            document.getElementById('statInstMonthly').textContent = fmtCurrency(instMonthly);
+            document.getElementById('statInstSub').textContent = `${instActive} תוכניות פעילות`;
+
+            // ---- Categories breakdown for this month ----
+            renderDashCategories(monthTx);
+            document.getElementById('dashMonthLabel').textContent = monthLabel(now);
+
+            // ---- Recent transactions ----
+            renderDashRecent();
+
+            // ---- Net worth ----
+            renderNetWorth({ invValue, owedToMe, iOwe, instRemaining: state.installments.reduce((s,p)=>s+instTotals(p).remaining,0) });
+
+            // ---- Upcoming ----
+            renderUpcoming();
+        }
+
+        function changeText(curr, prev, suffix, expenseDirection = false) {
+            if (prev === 0 && curr === 0) return '—';
+            if (prev === 0) return `חדש ${suffix}`;
+            const diff = curr - prev;
+            const pct = (diff / prev) * 100;
+            const better = expenseDirection ? diff < 0 : diff > 0;
+            const arrow = diff >= 0 ? '↑' : '↓';
+            const color = better ? 'var(--income)' : 'var(--expense)';
+            return `<span style="color:${color}">${arrow} ${Math.abs(pct).toFixed(0)}%</span> ${suffix}`;
+        }
+
+        function renderDashCategories(monthTx) {
+            const container = document.getElementById('dashCategories');
+            const expense = monthTx.filter(t => t.type === 'expense');
+            if (!expense.length) {
+                container.innerHTML = '<div class="empty-state" style="padding:30px 10px;"><div class="emoji">📭</div><div>אין הוצאות החודש</div></div>';
+                return;
+            }
+            const map = {};
+            for (const t of expense) {
+                const c = getCategory(t.categoryId);
+                if (!c) continue;
+                map[c.id] = map[c.id] || { cat: c, total: 0, count: 0 };
+                map[c.id].total += Number(t.amount);
+                map[c.id].count += 1;
+            }
+            const items = Object.values(map).sort((a,b) => b.total - a.total);
+            const max = items[0].total;
+            const sum = items.reduce((s,i)=>s+i.total,0);
+            container.innerHTML = items.slice(0, 8).map(i => {
+                const pct = (i.total / sum) * 100;
+                const w = (i.total / max) * 100;
+                return `
+                    <div class="compare-row">
+                        <div class="row-icon" style="background:${i.cat.color}33;">${i.cat.icon}</div>
+                        <div>
+                            <div class="compare-meta">
+                                <span class="name">${escapeHtml(i.cat.name)}</span>
+                                <span class="val">${fmtCurrency(i.total)} · ${pct.toFixed(0)}%</span>
+                            </div>
+                            <div class="compare-bar"><div style="width:${w}%; background:${i.cat.color}"></div></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderDashRecent() {
+            const container = document.getElementById('dashRecent');
+            const recent = [...state.transactions]
+                .sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+                .slice(0, 6);
+            if (!recent.length) {
+                container.innerHTML = '<div class="empty-state" style="padding:30px 10px;"><div class="emoji">📭</div><div>עדיין אין תנועות</div></div>';
+                return;
+            }
+            container.innerHTML = recent.map(t => {
+                const c = getCategory(t.categoryId) || { name:'—', icon:'❓', color:'#cccccc' };
+                const sign = t.type==='income' ? '+' : '−';
+                const color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
+                return `
+                    <div class="mini-row">
+                        <div class="mini-left">
+                            <div class="mini-icon" style="background:${c.color}33;">${c.icon}</div>
+                            <div class="mini-text">
+                                <div class="t">${escapeHtml(c.name)}${t.note ? ' · <span style="color:var(--text-soft); font-weight:400">'+escapeHtml(t.note)+'</span>' : ''}</div>
+                                <div class="s">${formatDate(t.date)}</div>
+                            </div>
+                        </div>
+                        <div style="font-weight:600; color:${color}; font-variant-numeric:tabular-nums;">${sign}${fmtCurrency(t.amount)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderNetWorth({ invValue, owedToMe, iOwe, instRemaining }) {
+            const container = document.getElementById('dashNetWorth');
+            const assets = invValue + owedToMe;
+            const liabilities = iOwe + instRemaining;
+            const net = assets - liabilities;
+            const rows = [
+                { label: 'שווי השקעות',           amount: invValue,     icon: '📈', color: 'var(--info)',     side: 'asset' },
+                { label: 'חייבים לי',              amount: owedToMe,     icon: '🤝', color: 'var(--debt-in)',  side: 'asset' },
+                { label: 'אני חייב',               amount: iOwe,         icon: '💳', color: 'var(--debt-out)', side: 'liab'  },
+                { label: 'יתרת תשלומים פתוחה',     amount: instRemaining,icon: '📊', color: 'var(--expense)',  side: 'liab'  }
+            ];
+            container.innerHTML = `
+                ${rows.map(r => `
+                    <div class="mini-row">
+                        <div class="mini-left">
+                            <div class="mini-icon" style="background:${r.color}22; color:${r.color}">${r.icon}</div>
+                            <div class="mini-text"><div class="t">${r.label}</div><div class="s">${r.side==='asset'?'נכס':'התחייבות'}</div></div>
+                        </div>
+                        <div style="font-weight:600; color:${r.side==='asset'?'var(--income)':'var(--expense)'}; font-variant-numeric:tabular-nums;">${r.side==='asset'?'+':'−'}${fmtCurrency(r.amount)}</div>
+                    </div>
+                `).join('')}
+                <div class="mini-row" style="border-top:2px solid var(--border); margin-top:6px; padding-top:14px;">
+                    <div class="mini-left"><div class="mini-text"><div class="t" style="font-size:1rem;">שווי נטו</div><div class="s">נכסים פחות התחייבויות</div></div></div>
+                    <div style="font-weight:700; font-size:1.15rem; color:${net>=0?'var(--income)':'var(--expense)'}; font-variant-numeric:tabular-nums;">${net>=0?'+':'−'}${fmtCurrency(Math.abs(net))}</div>
+                </div>
+            `;
+        }
+
+        function renderUpcoming() {
+            const container = document.getElementById('dashUpcoming');
+            const items = [];
+            // recurring next bill
+            for (const r of state.recurring) {
+                if (!r.active) continue;
+                const next = nextBillingDate(r);
+                if (next) items.push({ when: next, label: r.name, amount: Number(r.amount), kind: 'recurring' });
+            }
+            // installments next monthly
+            for (const p of state.installments) {
+                if (p.currentPayment >= p.totalPayments) continue;
+                if (!p.startDate) continue;
+                // approx: next payment one month after currentPayment*month from start
+                const start = new Date(p.startDate + 'T00:00:00');
+                const next = new Date(start);
+                next.setMonth(next.getMonth() + p.currentPayment + 1);
+                items.push({ when: next, label: p.name + ` (${p.currentPayment+1}/${p.totalPayments})`, amount: Number(p.monthlyAmount), kind: 'installment' });
+            }
+            const today = new Date(); today.setHours(0,0,0,0);
+            const horizon = new Date(today); horizon.setDate(today.getDate()+30);
+            const upcoming = items
+                .filter(x => x.when >= today && x.when <= horizon)
+                .sort((a,b) => a.when - b.when)
+                .slice(0, 6);
+            if (!upcoming.length) {
+                container.innerHTML = '<div class="empty-state" style="padding:30px 10px;"><div class="emoji">📅</div><div>אין חיובים צפויים ב-30 הימים הקרובים</div></div>';
+                return;
+            }
+            const total = upcoming.reduce((s,x)=>s+x.amount,0);
+            container.innerHTML = `
+                <div style="margin-bottom:10px; padding:10px 12px; background:var(--primary-soft); border-radius:var(--radius-sm); font-size:0.88rem; color:var(--primary-dark);">
+                    סך צפי 30 ימים: <strong>${fmtCurrency(total)}</strong> · ${upcoming.length} חיובים
+                </div>
+                ${upcoming.map(x => `
+                    <div class="mini-row">
+                        <div class="mini-left">
+                            <div class="mini-icon" style="background:${x.kind==='recurring'?'var(--warning-soft)':'var(--primary-soft)'};">${x.kind==='recurring'?'🔁':'📊'}</div>
+                            <div class="mini-text"><div class="t">${escapeHtml(x.label)}</div><div class="s">${fmtNiceDate(x.when)}</div></div>
+                        </div>
+                        <div style="font-weight:600; color:var(--expense); font-variant-numeric:tabular-nums;">${fmtCurrency(x.amount)}</div>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        // ========== Category comparison ==========
+        let cmpState = { type: 'expense', period: 'month', sort: 'amount' };
+
+        function periodRange(period) {
+            const now = new Date();
+            if (period === 'all') return { from: null, to: null };
+            if (period === 'month') return { from: isoFor(startOfMonth(now)), to: null };
+            if (period === '3m') return { from: isoFor(startOfMonth(addMonths(now, -2))), to: null };
+            if (period === '6m') return { from: isoFor(startOfMonth(addMonths(now, -5))), to: null };
+            if (period === 'ytd') return { from: `${now.getFullYear()}-01-01`, to: null };
+            return { from: null, to: null };
+        }
+        function periodLabel(period) {
+            return ({ month:'החודש', '3m':'3 חודשים אחרונים', '6m':'6 חודשים אחרונים', ytd:'מתחילת השנה', all:'כל הזמנים' })[period] || '';
+        }
+
+        function renderComparison() {
+            const list = document.getElementById('cmpList');
+            const summary = document.getElementById('cmpSummary');
+            if (!list) return;
+
+            const { from, to } = periodRange(cmpState.period);
+            const tx = state.transactions.filter(t => t.type === cmpState.type && txInRange(t, from, to));
+            const cats = state.categories.filter(c => c.type === cmpState.type);
+
+            const map = {};
+            for (const c of cats) map[c.id] = { cat: c, total: 0, count: 0 };
+            for (const t of tx) {
+                if (!map[t.categoryId]) {
+                    const c = getCategory(t.categoryId);
+                    if (!c) continue;
+                    map[t.categoryId] = { cat: c, total: 0, count: 0 };
+                }
+                map[t.categoryId].total += Number(t.amount);
+                map[t.categoryId].count += 1;
+            }
+            let items = Object.values(map);
+
+            if (cmpState.sort === 'amount') items.sort((a,b) => b.total - a.total);
+            else items.sort((a,b) => b.count - a.count);
+
+            const totalSum = items.reduce((s,i)=>s+i.total,0);
+            const totalCount = items.reduce((s,i)=>s+i.count,0);
+            summary.innerHTML = `<strong>${periodLabel(cmpState.period)}</strong> · ${cmpState.type==='expense'?'הוצאות':'הכנסות'} סך הכל ${fmtCurrency(totalSum)} ב-${totalCount} תנועות`;
+
+            const max = cmpState.sort === 'amount'
+                ? Math.max(1, ...items.map(i => i.total))
+                : Math.max(1, ...items.map(i => i.count));
+            if (!items.length || (totalSum === 0 && cmpState.sort === 'amount')) {
+                list.innerHTML = '<div class="empty-state"><div class="emoji">📊</div><div>אין נתונים בתקופה זו</div></div>';
+                return;
+            }
+            list.innerHTML = items.map(i => {
+                const value = cmpState.sort === 'amount' ? i.total : i.count;
+                const w = (value / max) * 100;
+                const pct = totalSum > 0 ? (i.total / totalSum) * 100 : 0;
+                return `
+                    <div class="compare-row">
+                        <div class="row-icon" style="background:${i.cat.color}33;">${i.cat.icon}</div>
+                        <div>
+                            <div class="compare-meta">
+                                <span class="name">${escapeHtml(i.cat.name)}</span>
+                                <span class="val">${fmtCurrency(i.total)} · ${i.count} תנועות${totalSum>0?` · ${pct.toFixed(0)}%`:''}</span>
+                            </div>
+                            <div class="compare-bar"><div style="width:${w}%; background:${i.cat.color}"></div></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('cmpType').addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            cmpState.type = b.dataset.type;
+            document.querySelectorAll('#cmpType button').forEach(x => x.classList.toggle('active', x === b));
+            renderComparison();
+        });
+        document.getElementById('cmpPeriod').addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            cmpState.period = b.dataset.period;
+            document.querySelectorAll('#cmpPeriod button').forEach(x => x.classList.toggle('active', x === b));
+            renderComparison();
+        });
+        document.getElementById('cmpSort').addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            cmpState.sort = b.dataset.sort;
+            document.querySelectorAll('#cmpSort button').forEach(x => x.classList.toggle('active', x === b));
+            renderComparison();
+        });
+
         renderDashboard();
+        renderComparison();
 
         // ========== Modal helpers ==========
         const modalBackdrop = document.getElementById('modalBackdrop');
