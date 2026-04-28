@@ -514,6 +514,84 @@
             flex-wrap: wrap;
         }
 
+        /* Debts */
+        .debt-card {
+            padding: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-sm);
+        }
+        .debt-card.owed { border-inline-start: 3px solid var(--debt-in); }
+        .debt-card.owe { border-inline-start: 3px solid var(--debt-out); }
+        .debt-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+        .debt-person {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+        .debt-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+        .debt-avatar.owed { background: var(--debt-in); }
+        .debt-avatar.owe { background: var(--debt-out); }
+        .debt-name { font-weight: 600; }
+        .debt-meta { font-size: 0.78rem; color: var(--text-faint); margin-top: 2px; }
+        .debt-balance {
+            text-align: left;
+            font-variant-numeric: tabular-nums;
+        }
+        .debt-balance .amount { font-size: 1.1rem; font-weight: 700; }
+        .debt-balance.owed .amount { color: var(--debt-in); }
+        .debt-balance.owe .amount { color: var(--debt-out); }
+        .debt-balance .small { font-size: 0.75rem; color: var(--text-faint); }
+        .debt-body {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-soft);
+            display: none;
+        }
+        .debt-card.open .debt-body { display: block; }
+        .debt-card .chev {
+            transition: transform 0.2s;
+            color: var(--text-faint);
+            font-size: 0.85rem;
+        }
+        .debt-card.open .chev { transform: rotate(180deg); }
+        .history-list {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .history-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            padding: 8px 10px;
+            background: var(--surface-2);
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+        .history-item .h-meta { font-size: 0.72rem; color: var(--text-faint); margin-top: 2px; }
+        .h-pos { color: var(--income); font-weight: 600; font-variant-numeric: tabular-nums; }
+        .h-neg { color: var(--expense); font-weight: 600; font-variant-numeric: tabular-nums; }
+
         /* Modal */
         .modal-backdrop {
             position: fixed;
@@ -823,7 +901,40 @@
 
             <!-- Debts -->
             <section class="page" id="page-debts">
-                <div class="card"><div class="empty-state"><div class="emoji">🤝</div><div>חלק 5 - בקרוב</div></div></div>
+                <div class="dashboard-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">חייבים לי</div>
+                        <div class="stat-value" style="color: var(--debt-in)" id="debtOwedToMe">₪0</div>
+                        <div class="stat-sub"><span id="debtOwedCount">0</span> חובות פתוחים</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">אני חייב</div>
+                        <div class="stat-value" style="color: var(--debt-out)" id="debtIOwe">₪0</div>
+                        <div class="stat-sub"><span id="debtOweCount">0</span> חובות פתוחים</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">מאזן נטו</div>
+                        <div class="stat-value" id="debtNet">₪0</div>
+                        <div class="stat-sub" id="debtNetSub">—</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">
+                        <span>החובות שלך</span>
+                        <button class="btn btn-primary btn-sm" id="addDebtBtn">+ חוב חדש</button>
+                    </div>
+                    <div class="filters">
+                        <div class="toggle-group" id="debtFilter">
+                            <button data-filter="all" class="active">הכל</button>
+                            <button data-filter="owed">חייבים לי</button>
+                            <button data-filter="owe">אני חייב</button>
+                            <button data-filter="open">פתוחים</button>
+                            <button data-filter="closed">נסגרו</button>
+                        </div>
+                    </div>
+                    <div class="list" id="debtList"></div>
+                </div>
             </section>
 
             <!-- Investments -->
@@ -1692,12 +1803,285 @@
             renderInstallments();
         });
 
+        // ========== Debts ==========
+        let debtFilter = 'all';
+        const openDebts = new Set();
+
+        function debtInitial(name) {
+            const trimmed = (name || '').trim();
+            if (!trimmed) return '?';
+            const parts = trimmed.split(/\s+/).slice(0, 2);
+            return parts.map(p => p[0]).join('').toUpperCase();
+        }
+
+        function renderDebts() {
+            const list = document.getElementById('debtList');
+            if (!list) return;
+
+            const all = state.debts;
+            const owedOpen = all.filter(d => d.type === 'owed' && d.currentBalance > 0);
+            const oweOpen  = all.filter(d => d.type === 'owe'  && d.currentBalance > 0);
+
+            const totalOwed = owedOpen.reduce((s,d) => s + Number(d.currentBalance), 0);
+            const totalOwe  = oweOpen.reduce((s,d) => s + Number(d.currentBalance), 0);
+            const net = totalOwed - totalOwe;
+
+            document.getElementById('debtOwedToMe').textContent = fmtCurrency(totalOwed);
+            document.getElementById('debtIOwe').textContent = fmtCurrency(totalOwe);
+            document.getElementById('debtOwedCount').textContent = owedOpen.length;
+            document.getElementById('debtOweCount').textContent = oweOpen.length;
+            const netEl = document.getElementById('debtNet');
+            const netSub = document.getElementById('debtNetSub');
+            netEl.textContent = (net >= 0 ? '+' : '−') + fmtCurrency(Math.abs(net)).replace('₪','₪');
+            netEl.style.color = net > 0 ? 'var(--debt-in)' : (net < 0 ? 'var(--debt-out)' : 'var(--text)');
+            netSub.textContent = net > 0 ? 'חייבים לך יותר ממה שאתה חייב'
+                              : net < 0 ? 'אתה חייב יותר ממה שחייבים לך'
+                              : 'אין הפרש';
+
+            let debts = [...all];
+            if (debtFilter === 'owed') debts = debts.filter(d => d.type === 'owed');
+            else if (debtFilter === 'owe') debts = debts.filter(d => d.type === 'owe');
+            else if (debtFilter === 'open') debts = debts.filter(d => d.currentBalance > 0);
+            else if (debtFilter === 'closed') debts = debts.filter(d => d.currentBalance <= 0);
+
+            debts.sort((a,b) => {
+                const aOpen = a.currentBalance > 0 ? 0 : 1;
+                const bOpen = b.currentBalance > 0 ? 0 : 1;
+                if (aOpen !== bOpen) return aOpen - bOpen;
+                return Number(b.currentBalance) - Number(a.currentBalance);
+            });
+
+            if (!debts.length) {
+                list.innerHTML = `<div class="empty-state"><div class="emoji">🤝</div><div>אין חובות להצגה</div></div>`;
+                return;
+            }
+
+            list.innerHTML = debts.map(d => {
+                const isOpen = openDebts.has(d.id);
+                const closed = d.currentBalance <= 0;
+                const typeLabel = d.type === 'owed' ? 'חייב לך' : 'אתה חייב';
+                const history = (d.history || []).slice().reverse();
+                return `
+                    <div class="debt-card ${d.type} ${isOpen ? 'open' : ''}">
+                        <div class="debt-head" data-toggle-debt="${d.id}">
+                            <div class="debt-person">
+                                <div class="debt-avatar ${d.type}">${escapeHtml(debtInitial(d.personName))}</div>
+                                <div>
+                                    <div class="debt-name">${escapeHtml(d.personName)}${closed ? ' <span style="font-size:0.7rem; background:var(--surface-2); color:var(--text-faint); padding:2px 8px; border-radius:6px; margin-inline-start:6px;">נסגר</span>' : ''}</div>
+                                    <div class="debt-meta">${typeLabel} · התחיל ב-${fmtCurrency(d.originalAmount)}${d.note ? ' · '+escapeHtml(d.note) : ''}</div>
+                                </div>
+                            </div>
+                            <div class="debt-balance ${d.type}">
+                                <div class="amount">${fmtCurrency(d.currentBalance)}</div>
+                                <div class="small">יתרה <span class="chev">▾</span></div>
+                            </div>
+                        </div>
+                        <div class="debt-body">
+                            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                                <button class="btn btn-sm" data-debt-add="${d.id}" ${closed?'disabled style="opacity:0.5"':''}>+ הוסף לחוב</button>
+                                <button class="btn btn-sm btn-primary" data-debt-pay="${d.id}" ${closed?'disabled style="opacity:0.5"':''}>− רישום תשלום</button>
+                                <button class="btn btn-sm" data-debt-edit="${d.id}">✏️ עריכה</button>
+                                <button class="btn btn-sm btn-danger" data-debt-del="${d.id}">🗑️ מחק</button>
+                            </div>
+                            <div style="margin-top:14px; font-weight:500; font-size:0.9rem;">היסטוריה</div>
+                            <div class="history-list">
+                                ${history.length ? history.map(h => {
+                                    const isPlus = h.change > 0;
+                                    const txt = isPlus
+                                        ? (d.type === 'owed' ? 'הלוואה נוספה' : 'חוב נוסף')
+                                        : (d.type === 'owed' ? 'תקבל תשלום' : 'תשלום ששילמת');
+                                    return `
+                                        <div class="history-item">
+                                            <div>
+                                                <div>${txt}${h.note ? ' · '+escapeHtml(h.note) : ''}</div>
+                                                <div class="h-meta">${formatDate(h.date)}</div>
+                                            </div>
+                                            <div class="${isPlus?'h-neg':'h-pos'}">${isPlus?'+':'−'}${fmtCurrency(Math.abs(h.change))}</div>
+                                        </div>
+                                    `;
+                                }).join('') : '<div style="color:var(--text-faint); font-size:0.85rem;">אין רישומים נוספים</div>'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openDebtModal(existing = null) {
+            const isEdit = !!existing;
+            const d = existing || {
+                id: uid('debt'), type: 'owed', personName: '', originalAmount: '', currentBalance: 0,
+                note: '', history: []
+            };
+            openModal(`
+                <h3>${isEdit ? 'עריכת חוב' : 'חוב חדש'}</h3>
+                <div class="field" style="margin-bottom:12px;">
+                    <label>סוג</label>
+                    <div class="toggle-group" id="debtTypeToggle">
+                        <button data-type="owed" class="${d.type==='owed'?'active':''}">חייבים לי</button>
+                        <button data-type="owe" class="${d.type==='owe'?'active':''}">אני חייב</button>
+                    </div>
+                </div>
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="field" style="grid-column: span 2;">
+                        <label>שם האדם / גוף</label>
+                        <input class="input" id="debtName" value="${escapeHtml(d.personName)}" placeholder="למשל: דני, ההורים, הבנק">
+                    </div>
+                    <div class="field">
+                        <label>סכום ${isEdit ? 'נוכחי' : 'התחלתי'}</label>
+                        <input class="input" type="number" step="0.01" min="0" id="debtAmount" value="${isEdit ? d.currentBalance : (d.originalAmount || '')}" placeholder="0">
+                    </div>
+                    <div class="field">
+                        <label>תאריך</label>
+                        <input class="input" type="date" id="debtDate" value="${todayISO()}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                        <label>הערה (אופציונלי)</label>
+                        <input class="input" id="debtNote" value="${escapeHtml(d.note || '')}">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="debtCancel">ביטול</button>
+                    <button class="btn btn-primary" id="debtSave">${isEdit?'שמור':'הוסף'}</button>
+                </div>
+            `);
+
+            let chosenType = d.type;
+            document.getElementById('debtTypeToggle').addEventListener('click', e => {
+                const b = e.target.closest('button'); if (!b) return;
+                chosenType = b.dataset.type;
+                document.querySelectorAll('#debtTypeToggle button').forEach(x => x.classList.toggle('active', x === b));
+            });
+            document.getElementById('debtCancel').addEventListener('click', closeModal);
+            document.getElementById('debtSave').addEventListener('click', () => {
+                const personName = document.getElementById('debtName').value.trim();
+                const amount = parseFloat(document.getElementById('debtAmount').value);
+                const date = document.getElementById('debtDate').value;
+                const note = document.getElementById('debtNote').value.trim();
+                if (!personName) { showToast('יש להזין שם'); return; }
+                if (!amount || amount <= 0) { showToast('סכום לא תקין'); return; }
+
+                if (isEdit) {
+                    const idx = state.debts.findIndex(x => x.id === d.id);
+                    state.debts[idx] = { ...d, type: chosenType, personName, currentBalance: amount, note };
+                } else {
+                    state.debts.push({
+                        id: d.id, type: chosenType, personName,
+                        originalAmount: amount, currentBalance: amount, note,
+                        history: [{ date, change: amount, note: 'התחלה' }]
+                    });
+                }
+                saveState();
+                renderDebts();
+                renderDashboard();
+                closeModal();
+                showToast(isEdit ? 'עודכן' : 'נוסף');
+            });
+        }
+
+        function openDebtChangeModal(debt, mode) {
+            // mode: 'add' (increase debt) or 'pay' (reduce debt)
+            const titleText = mode === 'add'
+                ? (debt.type === 'owed' ? 'הוספה לחוב שחייבים לך' : 'הוספה לחוב שאתה חייב')
+                : (debt.type === 'owed' ? 'רישום תשלום שקיבלת' : 'רישום תשלום ששילמת');
+            openModal(`
+                <h3>${titleText}</h3>
+                <div style="background:var(--surface-2); padding:10px 12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:0.88rem;">
+                    <strong>${escapeHtml(debt.personName)}</strong> · יתרה: ${fmtCurrency(debt.currentBalance)}
+                </div>
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="field">
+                        <label>סכום</label>
+                        <input class="input" type="number" step="0.01" min="0" id="dchAmount" placeholder="0">
+                    </div>
+                    <div class="field">
+                        <label>תאריך</label>
+                        <input class="input" type="date" id="dchDate" value="${todayISO()}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                        <label>הערה (אופציונלי)</label>
+                        <input class="input" id="dchNote" placeholder="${mode==='add'?'למשל: הלוואה נוספת':'למשל: החזיר חלקית'}">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="dchCancel">ביטול</button>
+                    <button class="btn btn-primary" id="dchSave">${mode==='add'?'הוסף':'רשום תשלום'}</button>
+                </div>
+            `);
+            document.getElementById('dchCancel').addEventListener('click', closeModal);
+            setTimeout(() => document.getElementById('dchAmount').focus(), 50);
+            document.getElementById('dchSave').addEventListener('click', () => {
+                const amount = parseFloat(document.getElementById('dchAmount').value);
+                const date = document.getElementById('dchDate').value;
+                const note = document.getElementById('dchNote').value.trim();
+                if (!amount || amount <= 0) { showToast('סכום לא תקין'); return; }
+                const change = mode === 'add' ? amount : -amount;
+                debt.currentBalance = Math.max(0, Number(debt.currentBalance) + change);
+                if (mode === 'add') debt.originalAmount = Number(debt.originalAmount) + amount;
+                debt.history = debt.history || [];
+                debt.history.push({ date, change, note });
+                saveState();
+                renderDebts();
+                renderDashboard();
+                closeModal();
+                if (mode === 'pay' && debt.currentBalance === 0) showToast('החוב נסגר 🎉');
+                else showToast('עודכן');
+            });
+        }
+
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#addDebtBtn')) { openDebtModal(); return; }
+            const tog = e.target.closest('[data-toggle-debt]');
+            if (tog) {
+                const id = tog.dataset.toggleDebt;
+                if (openDebts.has(id)) openDebts.delete(id);
+                else openDebts.add(id);
+                renderDebts();
+                return;
+            }
+            const add = e.target.closest('[data-debt-add]');
+            if (add) {
+                const d = state.debts.find(x => x.id === add.dataset.debtAdd);
+                if (d) openDebtChangeModal(d, 'add');
+                return;
+            }
+            const pay = e.target.closest('[data-debt-pay]');
+            if (pay) {
+                const d = state.debts.find(x => x.id === pay.dataset.debtPay);
+                if (d) openDebtChangeModal(d, 'pay');
+                return;
+            }
+            const ed = e.target.closest('[data-debt-edit]');
+            if (ed) {
+                const d = state.debts.find(x => x.id === ed.dataset.debtEdit);
+                if (d) openDebtModal(d);
+                return;
+            }
+            const del = e.target.closest('[data-debt-del]');
+            if (del) {
+                const d = state.debts.find(x => x.id === del.dataset.debtDel);
+                if (!d) return;
+                if (!confirm(`למחוק את החוב של ${d.personName}? פעולה זו תמחק גם את כל ההיסטוריה.`)) return;
+                state.debts = state.debts.filter(x => x.id !== d.id);
+                saveState(); renderDebts(); renderDashboard();
+                showToast('נמחק');
+            }
+        });
+
+        document.getElementById('debtFilter').addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            debtFilter = b.dataset.filter;
+            document.querySelectorAll('#debtFilter button').forEach(x => x.classList.toggle('active', x === b));
+            renderDebts();
+        });
+
         // Page enter hook
         window.onPageEnter = function(page) {
             if (page === 'categories') renderCategoryGrid();
             else if (page === 'transactions') initTransactionsPage();
             else if (page === 'recurring') renderRecurring();
             else if (page === 'installments') renderInstallments();
+            else if (page === 'debts') renderDebts();
         };
 
         // Initial paints for currently-rendered page
@@ -1705,6 +2089,7 @@
         initTransactionsPage();
         renderRecurring();
         renderInstallments();
+        renderDebts();
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
