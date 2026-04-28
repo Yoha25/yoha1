@@ -64,7 +64,7 @@
 
         .app {
             display: grid;
-            grid-template-columns: 240px 1fr;
+            grid-template-columns: 240px minmax(0, 1fr);
             min-height: 100vh;
         }
 
@@ -150,6 +150,8 @@
             padding: 28px 36px 60px;
             max-width: 1280px;
             width: 100%;
+            margin-inline: auto;
+            min-width: 0;
         }
 
         .page-header {
@@ -685,7 +687,7 @@
             gap: 18px;
             margin-top: 18px;
         }
-        @media (max-width: 880px) {
+        @media (max-width: 1024px) {
             .dash-cols { grid-template-columns: 1fr; }
         }
         .mini-row {
@@ -804,7 +806,7 @@
             font-size: 1.2rem;
         }
 
-        @media (max-width: 880px) {
+        @media (max-width: 1024px) {
             .app { grid-template-columns: 1fr; }
             .sidebar {
                 position: fixed;
