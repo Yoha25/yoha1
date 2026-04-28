@@ -1351,27 +1351,44 @@
             const lastMonthStart = isoFor(startOfMonth(addMonths(now, -1)));
             const lastMonthEnd   = isoFor(new Date(now.getFullYear(), now.getMonth(), 0));
 
+            // ---- Recurring & installments (monthly equivalents, used in totals + per-card stats) ----
+            const recActiveList = state.recurring.filter(r => r.active);
+            const recMonthly = recActiveList.reduce((s, r) => s + monthlyEquivalent(r), 0);
+            const recActive = recActiveList.length;
+
+            const instActiveList = state.installments.filter(p => p.currentPayment < p.totalPayments);
+            const instMonthly = instActiveList.reduce((s, p) => s + Number(p.monthlyAmount), 0);
+            const instActive = instActiveList.length;
+
             // ---- This month income/expense ----
             const monthTx = state.transactions.filter(t => isInMonth(t.date, now));
             const monthIncome = monthTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
-            const monthExpense = monthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+            const monthExpenseTx = monthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+            const monthExpense = monthExpenseTx + recMonthly + instMonthly;
             const monthBalance = monthIncome - monthExpense;
 
             // ---- Last month for comparison ----
+            // recurring/installments are constant per month, so the comparison delta still
+            // reflects only transaction-driven change (we add the same constants on both sides).
             const lastMonthTx = state.transactions.filter(t => t.date >= lastMonthStart && t.date <= lastMonthEnd);
             const lastMonthIncome = lastMonthTx.filter(t => t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
-            const lastMonthExpense = lastMonthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+            const lastMonthExpenseTx = lastMonthTx.filter(t => t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+            const lastMonthExpense = lastMonthExpenseTx + recMonthly + instMonthly;
 
             const balEl = document.getElementById('statBalance');
             balEl.textContent = (monthBalance >= 0 ? '+' : '−') + fmtCurrency(Math.abs(monthBalance));
             balEl.style.color = monthBalance >= 0 ? 'var(--income)' : 'var(--expense)';
-            document.getElementById('statBalanceSub').textContent = `${monthLabel(now)} · הכנסות פחות הוצאות`;
+            document.getElementById('statBalanceSub').textContent = `${monthLabel(now)} · כולל מנויים ותשלומים`;
 
             document.getElementById('statIncome').textContent = fmtCurrency(monthIncome);
             document.getElementById('statIncomeSub').innerHTML = changeText(monthIncome, lastMonthIncome, 'מהחודש שעבר');
 
             document.getElementById('statExpense').textContent = fmtCurrency(monthExpense);
-            document.getElementById('statExpenseSub').innerHTML = changeText(monthExpense, lastMonthExpense, 'מהחודש שעבר', true);
+            const expSubChange = changeText(monthExpense, lastMonthExpense, 'מהחודש שעבר', true);
+            const fixedNote = (recMonthly + instMonthly) > 0
+                ? `<div style="font-size:0.72rem; color:var(--text-faint); margin-top:2px;">כולל ${fmtCurrency(recMonthly + instMonthly)} קבועים</div>`
+                : '';
+            document.getElementById('statExpenseSub').innerHTML = expSubChange + fixedNote;
 
             // ---- Investments ----
             const invInvested = state.investments.reduce((s,i)=>s+Number(i.amount),0);
@@ -1392,21 +1409,14 @@
             document.getElementById('statIOwe').textContent = fmtCurrency(iOwe);
             document.getElementById('statOweSub').textContent = `${iOweOpen} חובות פתוחים`;
 
-            // ---- Recurring & installments ----
-            const recMonthly = state.recurring.filter(r => r.active).reduce((s,r) => s + monthlyEquivalent(r), 0);
-            const recActive = state.recurring.filter(r => r.active).length;
+            // ---- Recurring & installments cards ----
             document.getElementById('statRecMonthly').textContent = fmtCurrency(recMonthly);
             document.getElementById('statRecSub').textContent = `${recActive} מנויים פעילים`;
-
-            const instMonthly = state.installments
-                .filter(p => p.currentPayment < p.totalPayments)
-                .reduce((s,p) => s + Number(p.monthlyAmount), 0);
-            const instActive = state.installments.filter(p => p.currentPayment < p.totalPayments).length;
             document.getElementById('statInstMonthly').textContent = fmtCurrency(instMonthly);
             document.getElementById('statInstSub').textContent = `${instActive} תוכניות פעילות`;
 
-            // ---- Categories breakdown for this month ----
-            renderDashCategories(monthTx);
+            // ---- Categories breakdown for this month (incl. recurring + installments) ----
+            renderDashCategories(monthTx, recActiveList, instActiveList);
             document.getElementById('dashMonthLabel').textContent = monthLabel(now);
 
             // ---- Recent transactions ----
@@ -1430,27 +1440,38 @@
             return `<span style="color:${color}">${arrow} ${Math.abs(pct).toFixed(0)}%</span> ${suffix}`;
         }
 
-        function renderDashCategories(monthTx) {
+        function renderDashCategories(monthTx, recActiveList = [], instActiveList = []) {
             const container = document.getElementById('dashCategories');
-            const expense = monthTx.filter(t => t.type === 'expense');
-            if (!expense.length) {
+            const map = {};
+            const bump = (catId, amount, kind) => {
+                const c = getCategory(catId);
+                if (!c) return;
+                map[c.id] = map[c.id] || { cat: c, total: 0, fromTx: 0, fromRec: 0, fromInst: 0 };
+                map[c.id].total += amount;
+                if (kind === 'tx') map[c.id].fromTx += amount;
+                else if (kind === 'rec') map[c.id].fromRec += amount;
+                else if (kind === 'inst') map[c.id].fromInst += amount;
+            };
+
+            for (const t of monthTx.filter(t => t.type === 'expense')) bump(t.categoryId, Number(t.amount), 'tx');
+            for (const r of recActiveList) bump(r.categoryId, monthlyEquivalent(r), 'rec');
+            for (const p of instActiveList) bump(p.categoryId, Number(p.monthlyAmount), 'inst');
+
+            const items = Object.values(map).sort((a,b) => b.total - a.total);
+            if (!items.length) {
                 container.innerHTML = '<div class="empty-state" style="padding:30px 10px;"><div class="emoji">📭</div><div>אין הוצאות החודש</div></div>';
                 return;
             }
-            const map = {};
-            for (const t of expense) {
-                const c = getCategory(t.categoryId);
-                if (!c) continue;
-                map[c.id] = map[c.id] || { cat: c, total: 0, count: 0 };
-                map[c.id].total += Number(t.amount);
-                map[c.id].count += 1;
-            }
-            const items = Object.values(map).sort((a,b) => b.total - a.total);
             const max = items[0].total;
             const sum = items.reduce((s,i)=>s+i.total,0);
             container.innerHTML = items.slice(0, 8).map(i => {
                 const pct = (i.total / sum) * 100;
                 const w = (i.total / max) * 100;
+                const breakdown = [];
+                if (i.fromTx > 0)   breakdown.push(`תנועות ${fmtCurrency(i.fromTx)}`);
+                if (i.fromRec > 0)  breakdown.push(`🔁 ${fmtCurrency(i.fromRec)}`);
+                if (i.fromInst > 0) breakdown.push(`📊 ${fmtCurrency(i.fromInst)}`);
+                const breakdownText = breakdown.length > 1 ? `<div style="font-size:0.72rem; color:var(--text-faint); margin-top:2px;">${breakdown.join(' · ')}</div>` : '';
                 return `
                     <div class="compare-row">
                         <div class="row-icon" style="background:${i.cat.color}33;">${i.cat.icon}</div>
@@ -1460,6 +1481,7 @@
                                 <span class="val">${fmtCurrency(i.total)} · ${pct.toFixed(0)}%</span>
                             </div>
                             <div class="compare-bar"><div style="width:${w}%; background:${i.cat.color}"></div></div>
+                            ${breakdownText}
                         </div>
                     </div>
                 `;
