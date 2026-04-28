@@ -295,6 +295,245 @@
             transform: translateX(-50%) translateY(0);
         }
 
+        /* Forms */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            align-items: end;
+        }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        .field label {
+            font-size: 0.82rem;
+            color: var(--text-soft);
+            font-weight: 500;
+        }
+        .input, .select, .textarea {
+            border: 1px solid var(--border);
+            background: var(--surface);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-size: 0.92rem;
+            color: var(--text);
+            font-family: inherit;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            width: 100%;
+        }
+        .input:focus, .select:focus, .textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-soft);
+        }
+        .textarea { resize: vertical; min-height: 60px; }
+
+        /* Toggle group */
+        .toggle-group {
+            display: inline-flex;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 3px;
+            gap: 2px;
+        }
+        .toggle-group button {
+            padding: 7px 14px;
+            border: none;
+            background: transparent;
+            border-radius: 7px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            color: var(--text-soft);
+            font-weight: 500;
+            font-family: inherit;
+        }
+        .toggle-group button.active {
+            background: var(--surface);
+            color: var(--text);
+            box-shadow: var(--shadow-sm);
+        }
+        .toggle-group.income button.active { color: var(--income); }
+        .toggle-group.expense button.active { color: var(--expense); }
+
+        /* Lists */
+        .list { display: flex; flex-direction: column; gap: 8px; }
+        .row {
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-sm);
+            transition: border-color 0.15s;
+        }
+        .row:hover { border-color: var(--border); }
+        .row-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: grid;
+            place-items: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .row-main { min-width: 0; }
+        .row-title { font-weight: 500; }
+        .row-sub {
+            font-size: 0.8rem;
+            color: var(--text-faint);
+            margin-top: 2px;
+        }
+        .row-amount {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .row-actions { display: flex; gap: 4px; }
+        .icon-btn {
+            background: transparent;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-faint);
+            display: grid;
+            place-items: center;
+            font-size: 0.95rem;
+        }
+        .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+        .icon-btn.danger:hover { background: var(--expense-soft); color: var(--expense); }
+
+        /* Filters bar */
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+
+        /* Section block */
+        .section-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Category pills */
+        .pill-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 10px;
+        }
+        .pill {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-soft);
+            background: var(--surface);
+            position: relative;
+        }
+        .pill .pill-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: grid;
+            place-items: center;
+            font-size: 1.05rem;
+            flex-shrink: 0;
+        }
+        .pill .pill-info { flex: 1; min-width: 0; }
+        .pill .pill-name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pill .pill-type { font-size: 0.75rem; color: var(--text-faint); }
+        .pill .pill-actions {
+            display: flex;
+            gap: 2px;
+        }
+
+        /* Modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(30, 40, 70, 0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            padding: 20px;
+        }
+        .modal-backdrop.show { display: flex; }
+        .modal {
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 24px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: var(--shadow-lg);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal h3 {
+            margin-bottom: 16px;
+            font-size: 1.15rem;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 18px;
+        }
+
+        /* Emoji picker */
+        .emoji-picker {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            max-height: 160px;
+            overflow-y: auto;
+            padding: 6px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface-2);
+        }
+        .emoji-picker button {
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 4px;
+            border-radius: 6px;
+        }
+        .emoji-picker button:hover { background: var(--primary-soft); }
+        .emoji-picker button.selected { background: var(--primary-soft); }
+
+        .color-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .color-picker button {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+        }
+        .color-picker button.selected {
+            border-color: var(--text);
+        }
+
         /* Mobile */
         .menu-toggle {
             display: none;
@@ -413,7 +652,56 @@
 
             <!-- Transactions -->
             <section class="page" id="page-transactions">
-                <div class="card"><div class="empty-state"><div class="emoji">💱</div><div>חלק 2 - בקרוב</div></div></div>
+                <div class="card" style="margin-bottom:18px">
+                    <div class="section-title">הוספת תנועה חדשה</div>
+                    <div style="display:flex; gap:10px; margin-bottom:14px;">
+                        <div class="toggle-group" id="txTypeToggle">
+                            <button data-type="expense" class="active">הוצאה</button>
+                            <button data-type="income">הכנסה</button>
+                        </div>
+                    </div>
+                    <form id="txForm" class="form-grid">
+                        <div class="field">
+                            <label>סכום</label>
+                            <input class="input" type="number" step="0.01" min="0" id="txAmount" placeholder="0" required>
+                        </div>
+                        <div class="field">
+                            <label>קטגוריה</label>
+                            <select class="select" id="txCategory" required></select>
+                        </div>
+                        <div class="field">
+                            <label>תאריך</label>
+                            <input class="input" type="date" id="txDate" required>
+                        </div>
+                        <div class="field" style="grid-column: span 2;">
+                            <label>הערה (אופציונלי)</label>
+                            <input class="input" type="text" id="txNote" placeholder="למשל: סופר רמי לוי">
+                        </div>
+                        <div class="field">
+                            <label style="visibility:hidden">.</label>
+                            <button type="submit" class="btn btn-primary">הוסף תנועה</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">
+                        <span>היסטוריית תנועות</span>
+                        <span style="font-size:0.85rem; color:var(--text-faint); font-weight:400" id="txCount"></span>
+                    </div>
+                    <div class="filters">
+                        <div class="toggle-group" id="txFilterType">
+                            <button data-filter="all" class="active">הכל</button>
+                            <button data-filter="income">הכנסות</button>
+                            <button data-filter="expense">הוצאות</button>
+                        </div>
+                        <select class="select" id="txFilterCategory" style="max-width:200px;">
+                            <option value="all">כל הקטגוריות</option>
+                        </select>
+                        <input class="input" type="text" id="txFilterSearch" placeholder="חיפוש בהערות..." style="max-width:220px;">
+                    </div>
+                    <div class="list" id="txList"></div>
+                </div>
             </section>
 
             <!-- Recurring -->
@@ -438,12 +726,30 @@
 
             <!-- Categories -->
             <section class="page" id="page-categories">
-                <div class="card"><div class="empty-state"><div class="emoji">🏷️</div><div>חלק 2 - בקרוב</div></div></div>
+                <div class="card" style="margin-bottom:18px">
+                    <div class="section-title">
+                        <span>קטגוריות הוצאה</span>
+                        <button class="btn btn-primary btn-sm" id="addExpCatBtn">+ קטגוריה חדשה</button>
+                    </div>
+                    <div class="pill-grid" id="expCatGrid"></div>
+                </div>
+                <div class="card">
+                    <div class="section-title">
+                        <span>קטגוריות הכנסה</span>
+                        <button class="btn btn-primary btn-sm" id="addIncCatBtn">+ קטגוריה חדשה</button>
+                    </div>
+                    <div class="pill-grid" id="incCatGrid"></div>
+                </div>
             </section>
         </main>
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Generic modal -->
+    <div class="modal-backdrop" id="modalBackdrop">
+        <div class="modal" id="modal"></div>
+    </div>
 
     <script>
         // ========== Storage ==========
@@ -559,8 +865,336 @@
 
         renderDashboard();
 
+        // ========== Modal helpers ==========
+        const modalBackdrop = document.getElementById('modalBackdrop');
+        const modalEl = document.getElementById('modal');
+
+        function openModal(html) {
+            modalEl.innerHTML = html;
+            modalBackdrop.classList.add('show');
+        }
+        function closeModal() {
+            modalBackdrop.classList.remove('show');
+            modalEl.innerHTML = '';
+        }
+        modalBackdrop.addEventListener('click', e => {
+            if (e.target === modalBackdrop) closeModal();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // ========== Categories ==========
+        const CAT_EMOJIS = ['🍎','🛒','🍔','☕','🏠','🚗','⛽','🚌','🎉','🎬','🎮','📚','💊','🏥','💪','🧾','💡','💧','📱','🌐','✈️','🏖️','🛍️','👕','💼','💻','🎨','🎵','🐶','🐱','💰','💵','💳','🏦','🎁','✨','📈','🎓','💄','🧴'];
+        const CAT_COLORS = ['#ffb4a2','#ffd6a5','#fdffb6','#caffbf','#9bf6ff','#a0c4ff','#bdb2ff','#ffc6ff','#cdb4db','#b5ead7','#ffdac1','#c7ceea','#f8bbd0','#dcedc8','#fff1ba'];
+
+        function getCategory(id) {
+            return state.categories.find(c => c.id === id);
+        }
+
+        function renderCategoryGrid() {
+            const expGrid = document.getElementById('expCatGrid');
+            const incGrid = document.getElementById('incCatGrid');
+            if (!expGrid || !incGrid) return;
+
+            const renderPill = c => `
+                <div class="pill" style="background:${c.color}1a; border-color:${c.color}55;">
+                    <div class="pill-icon" style="background:${c.color}33;">${c.icon}</div>
+                    <div class="pill-info">
+                        <div class="pill-name">${escapeHtml(c.name)}</div>
+                        <div class="pill-type">${countTxByCategory(c.id)} תנועות</div>
+                    </div>
+                    <div class="pill-actions">
+                        <button class="icon-btn" data-edit-cat="${c.id}" title="עריכה">✏️</button>
+                        <button class="icon-btn danger" data-del-cat="${c.id}" title="מחיקה">🗑️</button>
+                    </div>
+                </div>
+            `;
+
+            const expCats = state.categories.filter(c => c.type === 'expense');
+            const incCats = state.categories.filter(c => c.type === 'income');
+
+            expGrid.innerHTML = expCats.length ? expCats.map(renderPill).join('') :
+                '<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--text-faint)">אין קטגוריות הוצאה</div>';
+            incGrid.innerHTML = incCats.length ? incCats.map(renderPill).join('') :
+                '<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--text-faint)">אין קטגוריות הכנסה</div>';
+        }
+
+        function countTxByCategory(catId) {
+            return state.transactions.filter(t => t.categoryId === catId).length;
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, c => ({
+                '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+            }[c]));
+        }
+
+        function openCategoryModal(type, existing = null) {
+            const isEdit = !!existing;
+            const cat = existing || { id: uid('cat'), name: '', icon: '🏷️', color: CAT_COLORS[0], type };
+
+            openModal(`
+                <h3>${isEdit ? 'עריכת קטגוריה' : 'קטגוריה חדשה'}</h3>
+                <div class="field" style="margin-bottom:12px;">
+                    <label>שם הקטגוריה</label>
+                    <input class="input" id="catName" value="${escapeHtml(cat.name)}" placeholder="למשל: אוכל בחוץ">
+                </div>
+                <div class="field" style="margin-bottom:12px;">
+                    <label>סוג</label>
+                    <div class="toggle-group" id="catTypeToggle">
+                        <button data-type="expense" class="${cat.type==='expense'?'active':''}">הוצאה</button>
+                        <button data-type="income" class="${cat.type==='income'?'active':''}">הכנסה</button>
+                    </div>
+                </div>
+                <div class="field" style="margin-bottom:12px;">
+                    <label>אייקון</label>
+                    <div class="emoji-picker" id="emojiPicker">
+                        ${CAT_EMOJIS.map(e => `<button type="button" data-emoji="${e}" class="${e===cat.icon?'selected':''}">${e}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="field" style="margin-bottom:12px;">
+                    <label>צבע</label>
+                    <div class="color-picker" id="colorPicker">
+                        ${CAT_COLORS.map(col => `<button type="button" data-color="${col}" class="${col===cat.color?'selected':''}" style="background:${col}"></button>`).join('')}
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="catCancel">ביטול</button>
+                    <button class="btn btn-primary" id="catSave">${isEdit?'שמור':'הוסף'}</button>
+                </div>
+            `);
+
+            let chosen = { ...cat };
+
+            document.getElementById('catTypeToggle').addEventListener('click', e => {
+                const b = e.target.closest('button');
+                if (!b) return;
+                chosen.type = b.dataset.type;
+                document.querySelectorAll('#catTypeToggle button').forEach(x => x.classList.toggle('active', x === b));
+            });
+            document.getElementById('emojiPicker').addEventListener('click', e => {
+                const b = e.target.closest('button');
+                if (!b) return;
+                chosen.icon = b.dataset.emoji;
+                document.querySelectorAll('#emojiPicker button').forEach(x => x.classList.toggle('selected', x === b));
+            });
+            document.getElementById('colorPicker').addEventListener('click', e => {
+                const b = e.target.closest('button');
+                if (!b) return;
+                chosen.color = b.dataset.color;
+                document.querySelectorAll('#colorPicker button').forEach(x => x.classList.toggle('selected', x === b));
+            });
+            document.getElementById('catCancel').addEventListener('click', closeModal);
+            document.getElementById('catSave').addEventListener('click', () => {
+                const name = document.getElementById('catName').value.trim();
+                if (!name) { showToast('יש להזין שם'); return; }
+                chosen.name = name;
+                if (isEdit) {
+                    const idx = state.categories.findIndex(c => c.id === chosen.id);
+                    state.categories[idx] = chosen;
+                } else {
+                    state.categories.push(chosen);
+                }
+                saveState();
+                renderCategoryGrid();
+                refreshCategorySelectors();
+                closeModal();
+                showToast(isEdit ? 'הקטגוריה עודכנה' : 'קטגוריה נוספה');
+            });
+        }
+
+        function deleteCategory(id) {
+            const cat = getCategory(id);
+            if (!cat) return;
+            const used = countTxByCategory(id);
+            const msg = used > 0
+                ? `יש ${used} תנועות בקטגוריה "${cat.name}". המחיקה תסיר גם אותן. להמשיך?`
+                : `למחוק את הקטגוריה "${cat.name}"?`;
+            if (!confirm(msg)) return;
+            state.transactions = state.transactions.filter(t => t.categoryId !== id);
+            state.categories = state.categories.filter(c => c.id !== id);
+            saveState();
+            renderCategoryGrid();
+            refreshCategorySelectors();
+            renderTransactions();
+            showToast('הקטגוריה נמחקה');
+        }
+
+        // Wire up category page buttons (delegated since elements always exist)
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#addExpCatBtn')) openCategoryModal('expense');
+            else if (e.target.closest('#addIncCatBtn')) openCategoryModal('income');
+            else {
+                const editBtn = e.target.closest('[data-edit-cat]');
+                if (editBtn) {
+                    const c = getCategory(editBtn.dataset.editCat);
+                    if (c) openCategoryModal(c.type, c);
+                    return;
+                }
+                const delBtn = e.target.closest('[data-del-cat]');
+                if (delBtn) deleteCategory(delBtn.dataset.delCat);
+            }
+        });
+
+        // ========== Transactions ==========
+        let txCurrentType = 'expense';
+        let txFilter = { type: 'all', category: 'all', search: '' };
+
+        function refreshCategorySelectors() {
+            const sel = document.getElementById('txCategory');
+            const filterSel = document.getElementById('txFilterCategory');
+            if (sel) {
+                const cats = state.categories.filter(c => c.type === txCurrentType);
+                sel.innerHTML = cats.length
+                    ? cats.map(c => `<option value="${c.id}">${c.icon} ${escapeHtml(c.name)}</option>`).join('')
+                    : '<option value="">— אין קטגוריות, צור בלשונית הקטגוריות —</option>';
+            }
+            if (filterSel) {
+                const current = filterSel.value;
+                filterSel.innerHTML = '<option value="all">כל הקטגוריות</option>' +
+                    state.categories.map(c => `<option value="${c.id}">${c.icon} ${escapeHtml(c.name)}</option>`).join('');
+                filterSel.value = state.categories.find(c => c.id === current) ? current : 'all';
+            }
+        }
+
+        function renderTransactions() {
+            const list = document.getElementById('txList');
+            const count = document.getElementById('txCount');
+            if (!list) return;
+
+            let txs = [...state.transactions].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+
+            if (txFilter.type !== 'all') txs = txs.filter(t => t.type === txFilter.type);
+            if (txFilter.category !== 'all') txs = txs.filter(t => t.categoryId === txFilter.category);
+            if (txFilter.search) {
+                const q = txFilter.search.toLowerCase();
+                txs = txs.filter(t => (t.note || '').toLowerCase().includes(q));
+            }
+
+            count.textContent = `${txs.length} תנועות`;
+
+            if (!txs.length) {
+                list.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><div>אין תנועות תואמות</div></div>`;
+                return;
+            }
+
+            list.innerHTML = txs.map(t => {
+                const cat = getCategory(t.categoryId) || { name: 'ללא קטגוריה', icon: '❓', color: '#cccccc' };
+                const sign = t.type === 'income' ? '+' : '-';
+                const color = t.type === 'income' ? 'var(--income)' : 'var(--expense)';
+                return `
+                    <div class="row">
+                        <div class="row-icon" style="background:${cat.color}33;">${cat.icon}</div>
+                        <div class="row-main">
+                            <div class="row-title">${escapeHtml(cat.name)}${t.note ? ' · <span style="color:var(--text-soft); font-weight:400">'+escapeHtml(t.note)+'</span>' : ''}</div>
+                            <div class="row-sub">${formatDate(t.date)}</div>
+                        </div>
+                        <div class="row-amount" style="color:${color}">${sign}${fmtCurrency(t.amount)}</div>
+                        <div class="row-actions">
+                            <button class="icon-btn danger" data-del-tx="${t.id}" title="מחיקה">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '';
+            const d = new Date(iso + 'T00:00:00');
+            return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        function todayISO() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+
+        // Initialize transaction form
+        function initTransactionsPage() {
+            const dateInput = document.getElementById('txDate');
+            if (dateInput && !dateInput.value) dateInput.value = todayISO();
+            refreshCategorySelectors();
+            renderTransactions();
+        }
+
+        document.getElementById('txTypeToggle').addEventListener('click', e => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            txCurrentType = btn.dataset.type;
+            document.querySelectorAll('#txTypeToggle button').forEach(b => b.classList.toggle('active', b === btn));
+            document.getElementById('txTypeToggle').classList.toggle('income', txCurrentType === 'income');
+            document.getElementById('txTypeToggle').classList.toggle('expense', txCurrentType === 'expense');
+            refreshCategorySelectors();
+        });
+
+        document.getElementById('txForm').addEventListener('submit', e => {
+            e.preventDefault();
+            const amount = parseFloat(document.getElementById('txAmount').value);
+            const catId = document.getElementById('txCategory').value;
+            const date = document.getElementById('txDate').value;
+            const note = document.getElementById('txNote').value.trim();
+            if (!amount || amount <= 0) { showToast('סכום לא תקין'); return; }
+            if (!catId) { showToast('יש לבחור קטגוריה'); return; }
+            if (!date) { showToast('יש לבחור תאריך'); return; }
+
+            state.transactions.push({
+                id: uid('tx'),
+                type: txCurrentType,
+                amount,
+                categoryId: catId,
+                note,
+                date
+            });
+            saveState();
+            renderTransactions();
+            renderCategoryGrid();
+            renderDashboard();
+            document.getElementById('txAmount').value = '';
+            document.getElementById('txNote').value = '';
+            showToast(txCurrentType === 'income' ? 'הכנסה נוספה' : 'הוצאה נוספה');
+        });
+
+        document.getElementById('txFilterType').addEventListener('click', e => {
+            const b = e.target.closest('button');
+            if (!b) return;
+            txFilter.type = b.dataset.filter;
+            document.querySelectorAll('#txFilterType button').forEach(x => x.classList.toggle('active', x === b));
+            renderTransactions();
+        });
+        document.getElementById('txFilterCategory').addEventListener('change', e => {
+            txFilter.category = e.target.value;
+            renderTransactions();
+        });
+        document.getElementById('txFilterSearch').addEventListener('input', e => {
+            txFilter.search = e.target.value;
+            renderTransactions();
+        });
+
+        document.getElementById('txList').addEventListener('click', e => {
+            const del = e.target.closest('[data-del-tx]');
+            if (!del) return;
+            if (!confirm('למחוק את התנועה?')) return;
+            state.transactions = state.transactions.filter(t => t.id !== del.dataset.delTx);
+            saveState();
+            renderTransactions();
+            renderCategoryGrid();
+            renderDashboard();
+            showToast('נמחק');
+        });
+
+        // Page enter hook
+        window.onPageEnter = function(page) {
+            if (page === 'categories') renderCategoryGrid();
+            else if (page === 'transactions') initTransactionsPage();
+        };
+
+        // Initial paints for currently-rendered page
+        renderCategoryGrid();
+        initTransactionsPage();
+
         // Expose for later parts
-        window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META };
+        window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
     </script>
 </body>
 </html>
