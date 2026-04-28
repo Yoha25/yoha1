@@ -882,6 +882,9 @@
                 <button class="nav-item" data-page="categories">
                     <span class="nav-icon">🏷️</span><span>קטגוריות</span>
                 </button>
+                <button class="nav-item" data-page="sync">
+                    <span class="nav-icon">☁️</span><span>סנכרון</span>
+                </button>
             </nav>
         </aside>
         <div class="sidebar-backdrop" id="backdrop"></div>
@@ -1207,6 +1210,39 @@
                     <div class="pill-grid" id="incCatGrid"></div>
                 </div>
             </section>
+
+            <!-- Sync -->
+            <section class="page" id="page-sync">
+                <div class="card" id="syncStatusCard" style="margin-bottom:18px;">
+                    <div class="section-title"><span>מצב סנכרון</span></div>
+                    <div id="syncStatusBody"></div>
+                </div>
+
+                <div class="card" id="syncConfigCard" style="margin-bottom:18px;">
+                    <div class="section-title"><span>הגדרות Firebase</span></div>
+                    <div style="font-size:0.88rem; color:var(--text-soft); line-height:1.6; margin-bottom:12px;">
+                        כדי שהמידע יסונכרן בין המכשירים שלך, צור פרויקט חינמי ב-<a href="https://console.firebase.google.com" target="_blank" style="color:var(--primary-dark)">Firebase Console</a>, הפעל Firestore + Authentication עם Google, והדבק כאן את אובייקט ה-<code>firebaseConfig</code> שתקבל. ההגדרות נשמרות במכשיר הזה ולא נשלחות לשום מקום חוץ מ-Firebase שלך.
+                    </div>
+                    <div class="field" style="margin-bottom:12px;">
+                        <label>firebaseConfig (JSON)</label>
+                        <textarea class="textarea" id="syncConfigInput" rows="8" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", ... }' style="font-family:monospace; font-size:0.85rem;"></textarea>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" id="syncConfigSave">שמור והפעל</button>
+                        <button class="btn btn-danger" id="syncConfigClear" style="display:none;">הסר הגדרות</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title"><span>איך זה עובד</span></div>
+                    <ul style="margin: 0 18px; line-height:1.8; color:var(--text-soft); font-size:0.9rem;">
+                        <li>אחרי הגדרה והתחברות עם Google, כל שינוי באפליקציה נשמר אוטומטית בענן ומגיע לכל המכשירים שלך תוך שניות.</li>
+                        <li>גם בלי חיבור לאינטרנט אפשר להמשיך לעבוד — השינויים יסתנכרנו ברגע שהחיבור יחזור.</li>
+                        <li>הנתונים שלך פרטיים. רק החשבון Google שאיתו התחברת רואה אותם, וכללי Firestore מבטיחים זאת.</li>
+                        <li>בכל מכשיר חדש: היכנס לעמוד "סנכרון", הדבק את אותו <code>firebaseConfig</code>, התחבר עם אותו חשבון Google, והנתונים יתקבלו אוטומטית.</li>
+                    </ul>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -1263,6 +1299,7 @@
             } catch (e) {
                 console.error('Failed to save state', e);
             }
+            if (typeof window.__syncPushLocal === 'function') window.__syncPushLocal();
         }
 
         let state = loadState();
@@ -1293,7 +1330,8 @@
             installments: { title: 'תשלומים',          subtitle: 'מעקב התקדמות תשלומים' },
             debts:        { title: 'חובות',            subtitle: 'חובות שלי וחובות שחייבים לי' },
             investments:  { title: 'השקעות',           subtitle: 'תיק ההשקעות שלך' },
-            categories:   { title: 'קטגוריות',         subtitle: 'ניהול והשוואה בין קטגוריות' }
+            categories:   { title: 'קטגוריות',         subtitle: 'ניהול והשוואה בין קטגוריות' },
+            sync:         { title: 'סנכרון',           subtitle: 'סנכרון בין מכשירים דרך Firebase' }
         };
 
         function navigate(page) {
@@ -2916,6 +2954,311 @@
         renderInstallments();
         renderDebts();
         renderInvestments();
+
+        // ========== Render-everything helper (used after remote sync pulls state) ==========
+        function renderAll() {
+            renderDashboard();
+            renderCategoryGrid();
+            refreshCategorySelectors();
+            renderTransactions();
+            renderRecurring();
+            renderInstallments();
+            renderDebts();
+            renderInvestments();
+            renderComparison();
+        }
+
+        // ========== Firebase cross-device sync ==========
+        const SYNC_CONFIG_KEY = 'finance_firebase_config_v1';
+        const FB_VERSION = '10.13.0';
+        let fbApp = null, fbAuth = null, fbDb = null, fbUser = null, fbUnsub = null;
+        let fbApplyingRemote = false;
+        let fbPushTimer = null;
+        let lastSyncAt = null;
+
+        function loadScriptOnce(src) {
+            return new Promise((resolve, reject) => {
+                if (document.querySelector(`script[data-src="${src}"]`)) {
+                    if (window.firebase) return resolve();
+                }
+                const s = document.createElement('script');
+                s.src = src;
+                s.dataset.src = src;
+                s.onload = () => resolve();
+                s.onerror = () => reject(new Error('Failed to load ' + src));
+                document.head.appendChild(s);
+            });
+        }
+
+        async function loadFirebaseSDK() {
+            const base = `https://www.gstatic.com/firebasejs/${FB_VERSION}`;
+            await loadScriptOnce(`${base}/firebase-app-compat.js`);
+            await loadScriptOnce(`${base}/firebase-auth-compat.js`);
+            await loadScriptOnce(`${base}/firebase-firestore-compat.js`);
+        }
+
+        function getSavedConfig() {
+            try { return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)); } catch { return null; }
+        }
+        function saveConfig(cfg) { localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg)); }
+        function clearConfig() { localStorage.removeItem(SYNC_CONFIG_KEY); }
+
+        function renderSyncPage() {
+            const cfg = getSavedConfig();
+            const statusBody = document.getElementById('syncStatusBody');
+            const cfgInput = document.getElementById('syncConfigInput');
+            const clearBtn = document.getElementById('syncConfigClear');
+            if (!statusBody) return;
+
+            if (cfg) {
+                cfgInput.value = JSON.stringify(cfg, null, 2);
+                clearBtn.style.display = 'inline-flex';
+            } else {
+                clearBtn.style.display = 'none';
+            }
+
+            if (!cfg) {
+                statusBody.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px; padding:8px 0;">
+                        <div style="width:10px; height:10px; border-radius:50%; background:var(--text-faint);"></div>
+                        <div>סנכרון לא מוגדר. הדבק <code>firebaseConfig</code> למטה.</div>
+                    </div>`;
+                return;
+            }
+
+            if (!fbApp) {
+                statusBody.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px; padding:8px 0;">
+                        <div style="width:10px; height:10px; border-radius:50%; background:var(--warning);"></div>
+                        <div>טוען Firebase...</div>
+                    </div>`;
+                return;
+            }
+
+            if (!fbUser) {
+                statusBody.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px; padding:8px 0; margin-bottom:12px;">
+                        <div style="width:10px; height:10px; border-radius:50%; background:var(--warning);"></div>
+                        <div>Firebase מוכן. התחבר כדי לסנכרן.</div>
+                    </div>
+                    <button class="btn btn-primary" id="syncSignInBtn">התחבר עם Google</button>`;
+                document.getElementById('syncSignInBtn').addEventListener('click', signInWithGoogle);
+                return;
+            }
+
+            const ts = lastSyncAt ? lastSyncAt.toLocaleTimeString('he-IL') : 'עדיין לא';
+            const photo = fbUser.photoURL ? `<img src="${fbUser.photoURL}" alt="" style="width:36px; height:36px; border-radius:50%;">` : '';
+            statusBody.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px; padding:8px 0; margin-bottom:12px;">
+                    <div style="width:10px; height:10px; border-radius:50%; background:var(--income);"></div>
+                    ${photo}
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600;">${escapeHtml(fbUser.displayName || fbUser.email || 'משתמש')}</div>
+                        <div style="font-size:0.8rem; color:var(--text-faint);">${escapeHtml(fbUser.email || '')}</div>
+                    </div>
+                </div>
+                <div style="font-size:0.85rem; color:var(--text-soft); margin-bottom:12px;">סנכרון אחרון: ${ts} · המידע מסתנכרן אוטומטית בזמן אמת</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn" id="syncPullBtn">⬇️ משוך מהענן</button>
+                    <button class="btn" id="syncPushBtn">⬆️ דחוף לענן</button>
+                    <button class="btn btn-danger" id="syncSignOutBtn">התנתק</button>
+                </div>`;
+            document.getElementById('syncPullBtn').addEventListener('click', () => fbPullFromCloud(true));
+            document.getElementById('syncPushBtn').addEventListener('click', () => { fbPushNow(); showToast('נדחף לענן'); });
+            document.getElementById('syncSignOutBtn').addEventListener('click', signOut);
+        }
+
+        async function activateFirebase(cfg) {
+            try {
+                await loadFirebaseSDK();
+            } catch (e) {
+                showToast('טעינת Firebase נכשלה: ' + e.message);
+                return;
+            }
+            try {
+                if (!firebase.apps.length) {
+                    fbApp = firebase.initializeApp(cfg);
+                } else {
+                    fbApp = firebase.apps[0];
+                }
+                fbAuth = firebase.auth();
+                fbDb = firebase.firestore();
+                try { await fbDb.enablePersistence({ synchronizeTabs: true }); } catch {}
+                fbAuth.onAuthStateChanged(handleAuthChange);
+            } catch (e) {
+                showToast('שגיאה באתחול Firebase: ' + e.message);
+                console.error(e);
+            }
+            renderSyncPage();
+        }
+
+        async function signInWithGoogle() {
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                await fbAuth.signInWithPopup(provider);
+            } catch (e) {
+                showToast('התחברות נכשלה: ' + (e.message || ''));
+                console.error(e);
+            }
+        }
+
+        async function signOut() {
+            try {
+                if (fbUnsub) { fbUnsub(); fbUnsub = null; }
+                await fbAuth.signOut();
+            } catch (e) { console.error(e); }
+        }
+
+        function handleAuthChange(user) {
+            fbUser = user;
+            if (fbUnsub) { fbUnsub(); fbUnsub = null; }
+            if (user) startCloudListener();
+            renderSyncPage();
+        }
+
+        function startCloudListener() {
+            if (!fbDb || !fbUser) return;
+            const ref = fbDb.collection('userdata').doc(fbUser.uid);
+            fbUnsub = ref.onSnapshot(async (snap) => {
+                // Skip echoes from our own pending writes
+                if (snap.metadata.hasPendingWrites) return;
+
+                if (!snap.exists) {
+                    // First time: push current local state to cloud
+                    await fbPushNow();
+                    return;
+                }
+                const data = snap.data();
+                if (!data || !data.payload) return;
+                fbApplyingRemote = true;
+                state = mergeStateFromRemote(data.payload);
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+                fbApplyingRemote = false;
+                lastSyncAt = new Date();
+                renderAll();
+                renderSyncPage();
+            }, (err) => {
+                console.error('Firestore listener error:', err);
+                showToast('שגיאת סנכרון: ' + (err.message || ''));
+            });
+        }
+
+        function mergeStateFromRemote(payload) {
+            const base = structuredClone(defaultState);
+            return { ...base, ...payload };
+        }
+
+        async function fbPushNow() {
+            if (!fbDb || !fbUser) return;
+            try {
+                const ref = fbDb.collection('userdata').doc(fbUser.uid);
+                await ref.set({
+                    payload: {
+                        transactions: state.transactions,
+                        categories: state.categories,
+                        recurring: state.recurring,
+                        installments: state.installments,
+                        debts: state.debts,
+                        investments: state.investments
+                    },
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                lastSyncAt = new Date();
+                renderSyncPage();
+            } catch (e) {
+                console.error('Push failed:', e);
+                showToast('שמירה לענן נכשלה');
+            }
+        }
+
+        async function fbPullFromCloud(showToastOnDone) {
+            if (!fbDb || !fbUser) return;
+            try {
+                const ref = fbDb.collection('userdata').doc(fbUser.uid);
+                const snap = await ref.get();
+                if (snap.exists && snap.data().payload) {
+                    fbApplyingRemote = true;
+                    state = mergeStateFromRemote(snap.data().payload);
+                    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+                    fbApplyingRemote = false;
+                    lastSyncAt = new Date();
+                    renderAll();
+                    renderSyncPage();
+                    if (showToastOnDone) showToast('נמשך מהענן');
+                } else if (showToastOnDone) {
+                    showToast('אין מידע בענן עדיין');
+                }
+            } catch (e) {
+                console.error('Pull failed:', e);
+                showToast('משיכה נכשלה');
+            }
+        }
+
+        // Hook called from saveState after every local mutation
+        window.__syncPushLocal = function() {
+            if (fbApplyingRemote) return;
+            if (!fbUser || !fbDb) return;
+            clearTimeout(fbPushTimer);
+            fbPushTimer = setTimeout(() => fbPushNow(), 600);
+        };
+
+        // Wire UI
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#syncConfigSave')) {
+                const raw = document.getElementById('syncConfigInput').value.trim();
+                if (!raw) { showToast('הדבק את firebaseConfig'); return; }
+                let parsed;
+                try {
+                    parsed = JSON.parse(raw);
+                } catch {
+                    // Accept the JS snippet form Firebase shows, e.g.
+                    // const firebaseConfig = { apiKey: "...", ... };
+                    const start = raw.indexOf('{');
+                    const end = raw.lastIndexOf('}');
+                    if (start === -1 || end === -1 || end < start) {
+                        showToast('לא מצאתי אובייקט תקין'); return;
+                    }
+                    const objText = raw.slice(start, end + 1);
+                    try {
+                        parsed = Function('"use strict"; return (' + objText + ')')();
+                    } catch (err) {
+                        showToast('פורמט לא תקין: ' + (err.message || ''));
+                        return;
+                    }
+                }
+                if (!parsed || !parsed.apiKey || !parsed.projectId) {
+                    showToast('חסרים שדות apiKey / projectId');
+                    return;
+                }
+                saveConfig(parsed);
+                showToast('הגדרות נשמרו, טוען Firebase...');
+                renderSyncPage();
+                activateFirebase(parsed);
+                return;
+            }
+            if (e.target.closest('#syncConfigClear')) {
+                if (!confirm('להסיר את הגדרות הסנכרון? המידע ב-Firebase לא יימחק, רק החיבור מהמכשיר הזה.')) return;
+                if (fbUnsub) { fbUnsub(); fbUnsub = null; }
+                if (fbAuth) fbAuth.signOut().catch(()=>{});
+                clearConfig();
+                fbApp = null; fbAuth = null; fbDb = null; fbUser = null;
+                renderSyncPage();
+                showToast('הוסר');
+                return;
+            }
+        });
+
+        // Re-render sync page when navigating to it
+        const _origOnPageEnter = window.onPageEnter;
+        window.onPageEnter = function(page) {
+            if (typeof _origOnPageEnter === 'function') _origOnPageEnter(page);
+            if (page === 'sync') renderSyncPage();
+        };
+
+        // Boot Firebase if config already saved
+        renderSyncPage();
+        const savedCfg = getSavedConfig();
+        if (savedCfg) activateFirebase(savedCfg);
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
