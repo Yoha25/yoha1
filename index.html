@@ -706,7 +706,31 @@
 
             <!-- Recurring -->
             <section class="page" id="page-recurring">
-                <div class="card"><div class="empty-state"><div class="emoji">🔁</div><div>חלק 3 - בקרוב</div></div></div>
+                <div class="dashboard-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">סך חודשי (מנורמל)</div>
+                        <div class="stat-value" style="color: var(--expense)" id="recMonthlyTotal">₪0</div>
+                        <div class="stat-sub">פעילים בלבד</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">סך שנתי</div>
+                        <div class="stat-value" id="recYearlyTotal">₪0</div>
+                        <div class="stat-sub">לפי הקצב הנוכחי</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">מנויים פעילים</div>
+                        <div class="stat-value" style="color: var(--info)" id="recActiveCount">0</div>
+                        <div class="stat-sub">מתוך <span id="recTotalCount">0</span></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">
+                        <span>הוצאות קבועות</span>
+                        <button class="btn btn-primary btn-sm" id="addRecBtn">+ הוצאה קבועה</button>
+                    </div>
+                    <div class="list" id="recList"></div>
+                </div>
             </section>
 
             <!-- Installments -->
@@ -1183,15 +1207,207 @@
             showToast('נמחק');
         });
 
+        // ========== Recurring expenses ==========
+        const FREQ_LABELS = { weekly: 'שבועי', monthly: 'חודשי', yearly: 'שנתי' };
+        const FREQ_PER_MONTH = { weekly: 4.345, monthly: 1, yearly: 1/12 };
+
+        function monthlyEquivalent(rec) {
+            return Number(rec.amount) * (FREQ_PER_MONTH[rec.frequency] || 1);
+        }
+
+        function nextBillingDate(rec) {
+            if (!rec.startDate) return null;
+            const start = new Date(rec.startDate + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            if (start > today) return start;
+
+            const next = new Date(start);
+            if (rec.frequency === 'weekly') {
+                const diffDays = Math.floor((today - start) / (1000*60*60*24));
+                const cycles = Math.floor(diffDays / 7) + 1;
+                next.setDate(start.getDate() + cycles * 7);
+            } else if (rec.frequency === 'monthly') {
+                while (next <= today) next.setMonth(next.getMonth() + 1);
+            } else if (rec.frequency === 'yearly') {
+                while (next <= today) next.setFullYear(next.getFullYear() + 1);
+            }
+            return next;
+        }
+
+        function fmtNiceDate(d) {
+            if (!d) return '';
+            return d.toLocaleDateString('he-IL', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        function renderRecurring() {
+            const list = document.getElementById('recList');
+            if (!list) return;
+
+            const recs = [...state.recurring].sort((a,b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, 'he'));
+            const active = recs.filter(r => r.active);
+
+            const monthly = active.reduce((s, r) => s + monthlyEquivalent(r), 0);
+            document.getElementById('recMonthlyTotal').textContent = fmtCurrency(monthly);
+            document.getElementById('recYearlyTotal').textContent = fmtCurrency(monthly * 12);
+            document.getElementById('recActiveCount').textContent = active.length;
+            document.getElementById('recTotalCount').textContent = recs.length;
+
+            if (!recs.length) {
+                list.innerHTML = `<div class="empty-state"><div class="emoji">🔁</div><div>אין הוצאות קבועות. הוסף מנוי או תשלום חודשי.</div></div>`;
+                return;
+            }
+
+            list.innerHTML = recs.map(r => {
+                const cat = getCategory(r.categoryId) || { name: 'ללא קטגוריה', icon: '🔁', color: '#cccccc' };
+                const next = nextBillingDate(r);
+                const dimmed = r.active ? '' : 'opacity:0.55;';
+                const monthlyEq = monthlyEquivalent(r);
+                const eqText = r.frequency === 'monthly' ? '' : ` · שווה־ערך חודשי ${fmtCurrency(monthlyEq)}`;
+                return `
+                    <div class="row" style="${dimmed}">
+                        <div class="row-icon" style="background:${cat.color}33;">${cat.icon}</div>
+                        <div class="row-main">
+                            <div class="row-title">
+                                ${escapeHtml(r.name)}
+                                ${!r.active ? '<span style="font-size:0.72rem; background:var(--surface-2); color:var(--text-faint); padding:2px 8px; border-radius:6px; margin-inline-start:6px;">מושהה</span>' : ''}
+                            </div>
+                            <div class="row-sub">
+                                ${escapeHtml(cat.name)} · ${FREQ_LABELS[r.frequency]}${eqText}
+                                ${r.active && next ? ` · חיוב הבא: ${fmtNiceDate(next)}` : ''}
+                            </div>
+                        </div>
+                        <div class="row-amount" style="color:var(--expense)">${fmtCurrency(r.amount)}</div>
+                        <div class="row-actions">
+                            <button class="icon-btn" data-toggle-rec="${r.id}" title="${r.active?'השהה':'הפעל'}">${r.active?'⏸️':'▶️'}</button>
+                            <button class="icon-btn" data-edit-rec="${r.id}" title="עריכה">✏️</button>
+                            <button class="icon-btn danger" data-del-rec="${r.id}" title="מחיקה">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openRecurringModal(existing = null) {
+            const isEdit = !!existing;
+            const expCats = state.categories.filter(c => c.type === 'expense');
+            const rec = existing || {
+                id: uid('rec'), name: '', amount: '', categoryId: expCats[0]?.id || '',
+                frequency: 'monthly', startDate: todayISO(), active: true, note: ''
+            };
+
+            openModal(`
+                <h3>${isEdit ? 'עריכת הוצאה קבועה' : 'הוצאה קבועה חדשה'}</h3>
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="field" style="grid-column: span 2;">
+                        <label>שם</label>
+                        <input class="input" id="recName" value="${escapeHtml(rec.name)}" placeholder="למשל: נטפליקס, חדר כושר">
+                    </div>
+                    <div class="field">
+                        <label>סכום</label>
+                        <input class="input" type="number" step="0.01" min="0" id="recAmount" value="${rec.amount}" placeholder="0">
+                    </div>
+                    <div class="field">
+                        <label>תדירות</label>
+                        <select class="select" id="recFreq">
+                            <option value="weekly" ${rec.frequency==='weekly'?'selected':''}>שבועי</option>
+                            <option value="monthly" ${rec.frequency==='monthly'?'selected':''}>חודשי</option>
+                            <option value="yearly" ${rec.frequency==='yearly'?'selected':''}>שנתי</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>קטגוריה</label>
+                        <select class="select" id="recCat">
+                            ${expCats.length ? expCats.map(c => `<option value="${c.id}" ${c.id===rec.categoryId?'selected':''}>${c.icon} ${escapeHtml(c.name)}</option>`).join('') : '<option value="">— אין קטגוריות הוצאה —</option>'}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>תאריך התחלה / חיוב ראשון</label>
+                        <input class="input" type="date" id="recStart" value="${rec.startDate}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                        <label>הערה (אופציונלי)</label>
+                        <input class="input" id="recNote" value="${escapeHtml(rec.note || '')}" placeholder="למשל: מנוי משפחתי">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="recCancel">ביטול</button>
+                    <button class="btn btn-primary" id="recSave">${isEdit?'שמור':'הוסף'}</button>
+                </div>
+            `);
+
+            document.getElementById('recCancel').addEventListener('click', closeModal);
+            document.getElementById('recSave').addEventListener('click', () => {
+                const name = document.getElementById('recName').value.trim();
+                const amount = parseFloat(document.getElementById('recAmount').value);
+                const frequency = document.getElementById('recFreq').value;
+                const categoryId = document.getElementById('recCat').value;
+                const startDate = document.getElementById('recStart').value;
+                const note = document.getElementById('recNote').value.trim();
+
+                if (!name) { showToast('יש להזין שם'); return; }
+                if (!amount || amount <= 0) { showToast('סכום לא תקין'); return; }
+                if (!categoryId) { showToast('יש לבחור קטגוריה (או ליצור אחת)'); return; }
+                if (!startDate) { showToast('יש לבחור תאריך התחלה'); return; }
+
+                const updated = { ...rec, name, amount, frequency, categoryId, startDate, note };
+                if (isEdit) {
+                    const idx = state.recurring.findIndex(x => x.id === rec.id);
+                    state.recurring[idx] = updated;
+                } else {
+                    state.recurring.push(updated);
+                }
+                saveState();
+                renderRecurring();
+                renderDashboard();
+                closeModal();
+                showToast(isEdit ? 'עודכן' : 'הוצאה קבועה נוספה');
+            });
+        }
+
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#addRecBtn')) {
+                if (!state.categories.some(c => c.type === 'expense')) {
+                    showToast('צור תחילה לפחות קטגוריית הוצאה אחת');
+                    return;
+                }
+                openRecurringModal();
+                return;
+            }
+            const tog = e.target.closest('[data-toggle-rec]');
+            if (tog) {
+                const r = state.recurring.find(x => x.id === tog.dataset.toggleRec);
+                if (r) { r.active = !r.active; saveState(); renderRecurring(); renderDashboard(); }
+                return;
+            }
+            const ed = e.target.closest('[data-edit-rec]');
+            if (ed) {
+                const r = state.recurring.find(x => x.id === ed.dataset.editRec);
+                if (r) openRecurringModal(r);
+                return;
+            }
+            const del = e.target.closest('[data-del-rec]');
+            if (del) {
+                const r = state.recurring.find(x => x.id === del.dataset.delRec);
+                if (!r) return;
+                if (!confirm(`למחוק את "${r.name}"?`)) return;
+                state.recurring = state.recurring.filter(x => x.id !== r.id);
+                saveState(); renderRecurring(); renderDashboard();
+                showToast('נמחק');
+            }
+        });
+
         // Page enter hook
         window.onPageEnter = function(page) {
             if (page === 'categories') renderCategoryGrid();
             else if (page === 'transactions') initTransactionsPage();
+            else if (page === 'recurring') renderRecurring();
         };
 
         // Initial paints for currently-rendered page
         renderCategoryGrid();
         initTransactionsPage();
+        renderRecurring();
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
