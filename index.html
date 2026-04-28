@@ -879,6 +879,9 @@
                 <button class="nav-item" data-page="investments">
                     <span class="nav-icon">📈</span><span>השקעות</span>
                 </button>
+                <button class="nav-item" data-page="checking">
+                    <span class="nav-icon">🏦</span><span>עובר ושב</span>
+                </button>
                 <button class="nav-item" data-page="categories">
                     <span class="nav-icon">🏷️</span><span>קטגוריות</span>
                 </button>
@@ -937,6 +940,14 @@
                         <div class="stat-label">הוצאות החודש</div>
                         <div class="stat-value" style="color: var(--expense)" id="statExpense">₪0</div>
                         <div class="stat-sub" id="statExpenseSub">—</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">יתרה בעובר ושב</div>
+                        <div class="stat-value" id="statChecking" style="color: var(--info);">₪0</div>
+                        <div class="stat-sub" id="statCheckingSub" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <span id="statCheckingDate">—</span>
+                            <button class="btn btn-sm" id="statCheckingUpdate" style="padding:4px 10px; font-size:0.78rem;">עדכן</button>
+                        </div>
                     </div>
                     <div class="card stat-card">
                         <div class="stat-label">שווי השקעות</div>
@@ -1189,6 +1200,30 @@
                 </div>
             </section>
 
+            <!-- Checking account -->
+            <section class="page" id="page-checking">
+                <div class="card" style="margin-bottom:18px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:18px; align-items:center; justify-content:space-between;">
+                        <div>
+                            <div style="font-size:0.85rem; color:var(--text-soft); font-weight:500;">יתרה בעובר ושב</div>
+                            <div style="font-size:2.4rem; font-weight:700; color:var(--info); margin-top:4px;" id="chkCurrent">₪0</div>
+                            <div style="font-size:0.8rem; color:var(--text-faint); margin-top:2px;" id="chkUpdated">לא עודכן עדיין</div>
+                        </div>
+                        <button class="btn btn-primary" id="chkUpdateBtn">🔄 עדכן יתרה</button>
+                    </div>
+                </div>
+
+                <div class="card" id="chkChartCard" style="margin-bottom:18px; display:none;">
+                    <div class="section-title"><span>מגמה</span></div>
+                    <svg id="chkChart" viewBox="0 0 600 140" preserveAspectRatio="none" style="width:100%; height:140px; display:block;"></svg>
+                </div>
+
+                <div class="card">
+                    <div class="section-title"><span>היסטוריית עדכונים</span></div>
+                    <div class="list" id="chkHistory"></div>
+                </div>
+            </section>
+
             <!-- Categories -->
             <section class="page" id="page-categories">
                 <div class="card" style="margin-bottom:18px">
@@ -1298,7 +1333,8 @@
             recurring: [],        // {id, name, amount, categoryId, frequency, startDate, active}
             installments: [],     // {id, name, totalAmount, totalPayments, currentPayment, monthlyAmount, startDate, categoryId}
             debts: [],            // {id, type:'owe'|'owed', personName, originalAmount, currentBalance, note, history:[{date, change, note}]}
-            investments: []       // {id, name, type, amount, currentValue, note, date}
+            investments: [],      // {id, name, type, amount, currentValue, note, date}
+            checking: { history: [] }   // { history: [{id, date, amount, note}] } - snapshots, latest first
         };
 
         function loadState() {
@@ -1351,6 +1387,7 @@
             installments: { title: 'תשלומים',          subtitle: 'מעקב התקדמות תשלומים' },
             debts:        { title: 'חובות',            subtitle: 'חובות שלי וחובות שחייבים לי' },
             investments:  { title: 'השקעות',           subtitle: 'תיק ההשקעות שלך' },
+            checking:     { title: 'עובר ושב',         subtitle: 'יתרה נוכחית והיסטוריית עדכונים' },
             categories:   { title: 'קטגוריות',         subtitle: 'ניהול והשוואה בין קטגוריות' },
             sync:         { title: 'סנכרון',           subtitle: 'סנכרון בין מכשירים דרך Firebase' }
         };
@@ -1557,6 +1594,13 @@
                 document.getElementById('statExpenseSub').innerHTML = expNote;
             }
 
+            // ---- Checking account (always current snapshot) ----
+            ensureChecking();
+            const chkBal = checkingBalance();
+            const chkLatest = checkingCurrent();
+            document.getElementById('statChecking').textContent = fmtCurrency(chkBal);
+            document.getElementById('statCheckingDate').textContent = chkLatest ? `עודכן ${formatDate(chkLatest.date)}` : 'לא עודכן';
+
             // ---- Investments (always current snapshot) ----
             const invInvested = state.investments.reduce((s,i)=>s+Number(i.amount),0);
             const invValue    = state.investments.reduce((s,i)=>s+Number(i.currentValue),0);
@@ -1603,7 +1647,7 @@
             renderDashRecent();
 
             // ---- Net worth (current snapshot) ----
-            renderNetWorth({ invValue, owedToMe, iOwe, instRemaining: state.installments.reduce((s,p)=>s+instTotals(p).remaining,0) });
+            renderNetWorth({ chkBal, invValue, owedToMe, iOwe, instRemaining: state.installments.reduce((s,p)=>s+instTotals(p).remaining,0) });
 
             // ---- Upcoming (always next 30 days) ----
             renderUpcoming();
@@ -1697,12 +1741,13 @@
             }).join('');
         }
 
-        function renderNetWorth({ invValue, owedToMe, iOwe, instRemaining }) {
+        function renderNetWorth({ chkBal, invValue, owedToMe, iOwe, instRemaining }) {
             const container = document.getElementById('dashNetWorth');
-            const assets = invValue + owedToMe;
+            const assets = (chkBal || 0) + invValue + owedToMe;
             const liabilities = iOwe + instRemaining;
             const net = assets - liabilities;
             const rows = [
+                { label: 'יתרה בעובר ושב',          amount: chkBal || 0,  icon: '🏦', color: 'var(--info)',     side: 'asset' },
                 { label: 'שווי השקעות',           amount: invValue,     icon: '📈', color: 'var(--info)',     side: 'asset' },
                 { label: 'חייבים לי',              amount: owedToMe,     icon: '🤝', color: 'var(--debt-in)',  side: 'asset' },
                 { label: 'אני חייב',               amount: iOwe,         icon: '💳', color: 'var(--debt-out)', side: 'liab'  },
@@ -3093,6 +3138,154 @@
             }
         });
 
+        // ========== Checking account ==========
+        function checkingCurrent() {
+            const list = (state.checking && state.checking.history) || [];
+            return list.length ? list[0] : null;
+        }
+        function checkingBalance() {
+            const c = checkingCurrent();
+            return c ? Number(c.amount) : 0;
+        }
+        function ensureChecking() {
+            if (!state.checking) state.checking = { history: [] };
+            if (!Array.isArray(state.checking.history)) state.checking.history = [];
+        }
+
+        function renderChecking() {
+            ensureChecking();
+            const cur = checkingCurrent();
+            const elCurrent = document.getElementById('chkCurrent');
+            const elUpdated = document.getElementById('chkUpdated');
+            const list = document.getElementById('chkHistory');
+            if (elCurrent) elCurrent.textContent = fmtCurrency(cur ? cur.amount : 0);
+            if (elUpdated) elUpdated.textContent = cur ? `עודכן לאחרונה: ${formatDate(cur.date)}` : 'לא עודכן עדיין';
+
+            if (list) {
+                if (!state.checking.history.length) {
+                    list.innerHTML = `<div class="empty-state"><div class="emoji">🏦</div><div>עוד אין עדכונים. לחץ "עדכן יתרה" כדי להתחיל.</div></div>`;
+                } else {
+                    list.innerHTML = state.checking.history.map((h, idx) => {
+                        const prev = state.checking.history[idx + 1];
+                        const diff = prev ? Number(h.amount) - Number(prev.amount) : null;
+                        const diffEl = diff === null ? '' :
+                            `<span style="font-size:0.78rem; ${diff>=0?'color:var(--income)':'color:var(--expense)'}; margin-inline-start:8px;">${diff>=0?'+':'−'}${fmtCurrency(Math.abs(diff))}</span>`;
+                        return `
+                            <div class="row">
+                                <div class="row-icon" style="background:${idx===0?'var(--info-soft)':'var(--surface-2)'}; color:var(--info);">🏦</div>
+                                <div class="row-main">
+                                    <div class="row-title">${fmtCurrency(h.amount)}${idx===0?' <span style="font-size:0.7rem; background:var(--info-soft); color:var(--info); padding:2px 8px; border-radius:6px; margin-inline-start:6px;">נוכחי</span>':''}${diffEl}</div>
+                                    <div class="row-sub">${formatDate(h.date)}${h.note ? ' · '+escapeHtml(h.note) : ''}</div>
+                                </div>
+                                <div class="row-actions">
+                                    <button class="icon-btn" data-chk-edit="${h.id}" title="עריכה">✏️</button>
+                                    <button class="icon-btn danger" data-chk-del="${h.id}" title="מחיקה">🗑️</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // Tiny SVG sparkline
+            const chartCard = document.getElementById('chkChartCard');
+            const chart = document.getElementById('chkChart');
+            if (chartCard && chart) {
+                const points = [...state.checking.history].reverse(); // oldest → newest
+                if (points.length < 2) {
+                    chartCard.style.display = 'none';
+                } else {
+                    chartCard.style.display = 'block';
+                    const W = 600, H = 140, pad = 12;
+                    const min = Math.min(...points.map(p => Number(p.amount)));
+                    const max = Math.max(...points.map(p => Number(p.amount)));
+                    const span = max - min || 1;
+                    const xs = points.map((_, i) => pad + (i / (points.length - 1)) * (W - 2*pad));
+                    const ys = points.map(p => H - pad - ((Number(p.amount) - min) / span) * (H - 2*pad));
+                    const linePath = xs.map((x, i) => `${i===0?'M':'L'}${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ');
+                    const areaPath = `${linePath} L${xs[xs.length-1].toFixed(1)} ${H-pad} L${xs[0].toFixed(1)} ${H-pad} Z`;
+                    chart.innerHTML = `
+                        <path d="${areaPath}" fill="var(--info-soft)" />
+                        <path d="${linePath}" fill="none" stroke="var(--info)" stroke-width="2" />
+                        ${xs.map((x,i) => `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="3" fill="var(--info)" />`).join('')}
+                    `;
+                }
+            }
+        }
+
+        function openCheckingModal(existing = null) {
+            const isEdit = !!existing;
+            const cur = existing || { id: uid('chk'), amount: checkingBalance() || '', date: todayISO(), note: '' };
+            openModal(`
+                <h3>${isEdit ? 'עריכת עדכון' : 'עדכון יתרה'}</h3>
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="field">
+                        <label>סכום נוכחי</label>
+                        <input class="input" type="number" step="0.01" id="chkAmount" value="${cur.amount}" placeholder="0">
+                    </div>
+                    <div class="field">
+                        <label>תאריך</label>
+                        <input class="input" type="date" id="chkDate" value="${cur.date}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                        <label>הערה (אופציונלי)</label>
+                        <input class="input" id="chkNote" value="${escapeHtml(cur.note || '')}" placeholder="למשל: אחרי משכורת">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="chkCancel">ביטול</button>
+                    <button class="btn btn-primary" id="chkSave">${isEdit?'שמור':'עדכן'}</button>
+                </div>
+            `);
+            setTimeout(() => { const el = document.getElementById('chkAmount'); if (el) { el.focus(); el.select(); } }, 50);
+            document.getElementById('chkCancel').addEventListener('click', closeModal);
+            document.getElementById('chkSave').addEventListener('click', () => {
+                const amount = parseFloat(document.getElementById('chkAmount').value);
+                const date = document.getElementById('chkDate').value;
+                const note = document.getElementById('chkNote').value.trim();
+                if (!Number.isFinite(amount)) { showToast('סכום לא תקין'); return; }
+                if (!date) { showToast('יש לבחור תאריך'); return; }
+                ensureChecking();
+                if (isEdit) {
+                    const idx = state.checking.history.findIndex(h => h.id === cur.id);
+                    if (idx !== -1) state.checking.history[idx] = { ...cur, amount, date, note };
+                } else {
+                    state.checking.history.unshift({ id: cur.id, amount, date, note });
+                }
+                // Keep history sorted by date desc, then by insertion order (latest first overall)
+                state.checking.history.sort((a, b) => b.date.localeCompare(a.date));
+                saveState();
+                renderChecking();
+                renderDashboard();
+                closeModal();
+                showToast(isEdit ? 'עודכן' : 'יתרה עודכנה');
+            });
+        }
+
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#chkUpdateBtn') || e.target.closest('#statCheckingUpdate')) {
+                openCheckingModal();
+                return;
+            }
+            const ed = e.target.closest('[data-chk-edit]');
+            if (ed) {
+                ensureChecking();
+                const h = state.checking.history.find(x => x.id === ed.dataset.chkEdit);
+                if (h) openCheckingModal(h);
+                return;
+            }
+            const del = e.target.closest('[data-chk-del]');
+            if (del) {
+                if (!confirm('למחוק את העדכון?')) return;
+                ensureChecking();
+                state.checking.history = state.checking.history.filter(x => x.id !== del.dataset.chkDel);
+                saveState();
+                renderChecking();
+                renderDashboard();
+                showToast('נמחק');
+            }
+        });
+
         // Page enter hook
         window.onPageEnter = function(page) {
             if (page === 'categories') renderCategoryGrid();
@@ -3101,6 +3294,7 @@
             else if (page === 'installments') renderInstallments();
             else if (page === 'debts') renderDebts();
             else if (page === 'investments') renderInvestments();
+            else if (page === 'checking') renderChecking();
         };
 
         // Initial paints for currently-rendered page
@@ -3110,6 +3304,7 @@
         renderInstallments();
         renderDebts();
         renderInvestments();
+        renderChecking();
 
         // ========== Render-everything helper (used after remote sync pulls state) ==========
         function renderAll() {
@@ -3121,6 +3316,7 @@
             renderInstallments();
             renderDebts();
             renderInvestments();
+            renderChecking();
             renderComparison();
         }
 
@@ -3315,7 +3511,8 @@
                         recurring: state.recurring,
                         installments: state.installments,
                         debts: state.debts,
-                        investments: state.investments
+                        investments: state.investments,
+                        checking: state.checking || { history: [] }
                     },
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
