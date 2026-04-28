@@ -1220,6 +1220,10 @@
     <script>
         // ========== Storage ==========
         const STORAGE_KEY = 'finance_tracker_v1';
+        // Frequency lookup tables — declared early so they're initialized before
+        // any of the early render calls touch monthlyEquivalent().
+        const FREQ_LABELS = { weekly: 'שבועי', monthly: 'חודשי', yearly: 'שנתי' };
+        const FREQ_PER_MONTH = { weekly: 4.345, monthly: 1, yearly: 1/12 };
 
         const defaultState = {
             transactions: [],     // {id, type:'income'|'expense', amount, categoryId, note, date}
@@ -2002,9 +2006,6 @@
         });
 
         // ========== Recurring expenses ==========
-        const FREQ_LABELS = { weekly: 'שבועי', monthly: 'חודשי', yearly: 'שנתי' };
-        const FREQ_PER_MONTH = { weekly: 4.345, monthly: 1, yearly: 1/12 };
-
         function monthlyEquivalent(rec) {
             return Number(rec.amount) * (FREQ_PER_MONTH[rec.frequency] || 1);
         }
