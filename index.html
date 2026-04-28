@@ -462,6 +462,58 @@
             gap: 2px;
         }
 
+        /* Progress bar */
+        .progress {
+            height: 8px;
+            background: var(--surface-2);
+            border-radius: 99px;
+            overflow: hidden;
+            border: 1px solid var(--border-soft);
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            border-radius: 99px;
+            transition: width 0.3s;
+        }
+        .progress-bar.done {
+            background: linear-gradient(90deg, var(--income), #7ad9c2);
+        }
+
+        .installment-card {
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 14px;
+            padding: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-sm);
+        }
+        .installment-card.done { border-color: var(--income-soft); background: linear-gradient(180deg, var(--income-soft) 0%, var(--surface) 60%); }
+        .inst-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .inst-title { font-weight: 600; }
+        .inst-meta { font-size: 0.8rem; color: var(--text-faint); margin-top: 2px; }
+        .inst-progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.78rem;
+            color: var(--text-soft);
+            margin-bottom: 4px;
+        }
+        .inst-controls {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
         /* Modal */
         .modal-backdrop {
             position: fixed;
@@ -735,7 +787,38 @@
 
             <!-- Installments -->
             <section class="page" id="page-installments">
-                <div class="card"><div class="empty-state"><div class="emoji">📊</div><div>חלק 4 - בקרוב</div></div></div>
+                <div class="dashboard-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">חודשי פעיל</div>
+                        <div class="stat-value" style="color: var(--expense)" id="instMonthly">₪0</div>
+                        <div class="stat-sub">סך תשלומים חודשיים פתוחים</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">יתרה לתשלום</div>
+                        <div class="stat-value" id="instRemaining">₪0</div>
+                        <div class="stat-sub">סך הכל שנשאר</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">תוכניות פעילות</div>
+                        <div class="stat-value" style="color: var(--info)" id="instActiveCount">0</div>
+                        <div class="stat-sub">מתוך <span id="instTotalCount">0</span></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">
+                        <span>תשלומים</span>
+                        <button class="btn btn-primary btn-sm" id="addInstBtn">+ תשלום חדש</button>
+                    </div>
+                    <div class="filters">
+                        <div class="toggle-group" id="instFilter">
+                            <button data-filter="all" class="active">הכל</button>
+                            <button data-filter="active">פעילים</button>
+                            <button data-filter="done">הסתיימו</button>
+                        </div>
+                    </div>
+                    <div class="list" id="instList"></div>
+                </div>
             </section>
 
             <!-- Debts -->
@@ -1397,17 +1480,231 @@
             }
         });
 
+        // ========== Installments ==========
+        let instFilter = 'all';
+
+        function instTotals(p) {
+            const totalAmount = Number(p.monthlyAmount) * Number(p.totalPayments);
+            const paid = Number(p.monthlyAmount) * Number(p.currentPayment);
+            const remaining = Math.max(0, totalAmount - paid);
+            const pct = p.totalPayments > 0 ? Math.min(100, (p.currentPayment / p.totalPayments) * 100) : 0;
+            const isDone = p.currentPayment >= p.totalPayments;
+            return { totalAmount, paid, remaining, pct, isDone };
+        }
+
+        function renderInstallments() {
+            const list = document.getElementById('instList');
+            if (!list) return;
+
+            let plans = [...state.installments].sort((a,b) => {
+                const da = instTotals(a).isDone ? 1 : 0;
+                const db = instTotals(b).isDone ? 1 : 0;
+                if (da !== db) return da - db;
+                return a.name.localeCompare(b.name, 'he');
+            });
+
+            const active = plans.filter(p => !instTotals(p).isDone);
+            const monthlySum = active.reduce((s,p) => s + Number(p.monthlyAmount), 0);
+            const remainingSum = plans.reduce((s,p) => s + instTotals(p).remaining, 0);
+            document.getElementById('instMonthly').textContent = fmtCurrency(monthlySum);
+            document.getElementById('instRemaining').textContent = fmtCurrency(remainingSum);
+            document.getElementById('instActiveCount').textContent = active.length;
+            document.getElementById('instTotalCount').textContent = plans.length;
+
+            if (instFilter === 'active') plans = plans.filter(p => !instTotals(p).isDone);
+            else if (instFilter === 'done') plans = plans.filter(p => instTotals(p).isDone);
+
+            if (!plans.length) {
+                list.innerHTML = `<div class="empty-state"><div class="emoji">📊</div><div>אין תשלומים להצגה</div></div>`;
+                return;
+            }
+
+            list.innerHTML = plans.map(p => {
+                const cat = getCategory(p.categoryId) || { name: 'ללא קטגוריה', icon: '📊', color: '#cccccc' };
+                const t = instTotals(p);
+                return `
+                    <div class="installment-card ${t.isDone ? 'done' : ''}">
+                        <div class="row-icon" style="background:${cat.color}33; align-self:start">${cat.icon}</div>
+                        <div>
+                            <div class="inst-head">
+                                <div>
+                                    <div class="inst-title">
+                                        ${escapeHtml(p.name)}
+                                        ${t.isDone ? '<span style="font-size:0.72rem; background:var(--income-soft); color:var(--income); padding:2px 8px; border-radius:6px; margin-inline-start:6px;">הושלם</span>' : ''}
+                                    </div>
+                                    <div class="inst-meta">${escapeHtml(cat.name)} · ${fmtCurrency(p.monthlyAmount)} לחודש${p.note ? ' · '+escapeHtml(p.note) : ''}</div>
+                                </div>
+                                <div style="text-align:left;">
+                                    <div style="font-weight:600;">${fmtCurrency(t.paid)} / ${fmtCurrency(t.totalAmount)}</div>
+                                    <div class="inst-meta">נותרו ${fmtCurrency(t.remaining)}</div>
+                                </div>
+                            </div>
+                            <div class="inst-progress-text">
+                                <span>תשלום ${p.currentPayment} מתוך ${p.totalPayments}</span>
+                                <span>${t.pct.toFixed(0)}%</span>
+                            </div>
+                            <div class="progress"><div class="progress-bar ${t.isDone?'done':''}" style="width:${t.pct}%"></div></div>
+                            <div class="inst-controls">
+                                <button class="btn btn-sm" data-inst-dec="${p.id}" ${p.currentPayment<=0?'disabled style="opacity:0.4"':''}>− הסר תשלום</button>
+                                <button class="btn btn-sm btn-primary" data-inst-inc="${p.id}" ${t.isDone?'disabled style="opacity:0.4"':''}>+ סמן ששולם</button>
+                                <button class="btn btn-sm" data-inst-edit="${p.id}">✏️ עריכה</button>
+                                <button class="btn btn-sm btn-danger" data-inst-del="${p.id}">🗑️ מחק</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openInstallmentModal(existing = null) {
+            const isEdit = !!existing;
+            const expCats = state.categories.filter(c => c.type === 'expense');
+            const p = existing || {
+                id: uid('inst'), name: '', monthlyAmount: '', totalPayments: 12, currentPayment: 0,
+                startDate: todayISO(), categoryId: expCats[0]?.id || '', note: ''
+            };
+
+            openModal(`
+                <h3>${isEdit ? 'עריכת תשלום' : 'תשלום חדש'}</h3>
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="field" style="grid-column: span 2;">
+                        <label>שם / מטרה</label>
+                        <input class="input" id="instName" value="${escapeHtml(p.name)}" placeholder="למשל: מכשיר חדש, רהיט">
+                    </div>
+                    <div class="field">
+                        <label>סכום חודשי</label>
+                        <input class="input" type="number" step="0.01" min="0" id="instMonthlyAmt" value="${p.monthlyAmount}" placeholder="0">
+                    </div>
+                    <div class="field">
+                        <label>סך תשלומים</label>
+                        <input class="input" type="number" min="1" step="1" id="instTotal" value="${p.totalPayments}">
+                    </div>
+                    <div class="field">
+                        <label>תשלום נוכחי שכבר שולם</label>
+                        <input class="input" type="number" min="0" step="1" id="instCurrent" value="${p.currentPayment}">
+                    </div>
+                    <div class="field">
+                        <label>קטגוריה</label>
+                        <select class="select" id="instCat">
+                            ${expCats.length ? expCats.map(c => `<option value="${c.id}" ${c.id===p.categoryId?'selected':''}>${c.icon} ${escapeHtml(c.name)}</option>`).join('') : '<option value="">— אין קטגוריות הוצאה —</option>'}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>תאריך התחלה</label>
+                        <input class="input" type="date" id="instStart" value="${p.startDate}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                        <label>הערה (אופציונלי)</label>
+                        <input class="input" id="instNote" value="${escapeHtml(p.note || '')}">
+                    </div>
+                    <div class="field" style="grid-column: span 2; padding: 10px 12px; background:var(--primary-soft); border-radius:var(--radius-sm); font-size:0.85rem; color:var(--primary-dark);">
+                        סך הכל יחושב אוטומטית מהסכום החודשי × מספר התשלומים.
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="instCancel">ביטול</button>
+                    <button class="btn btn-primary" id="instSave">${isEdit?'שמור':'הוסף'}</button>
+                </div>
+            `);
+
+            document.getElementById('instCancel').addEventListener('click', closeModal);
+            document.getElementById('instSave').addEventListener('click', () => {
+                const name = document.getElementById('instName').value.trim();
+                const monthlyAmount = parseFloat(document.getElementById('instMonthlyAmt').value);
+                const totalPayments = parseInt(document.getElementById('instTotal').value, 10);
+                let currentPayment = parseInt(document.getElementById('instCurrent').value, 10) || 0;
+                const categoryId = document.getElementById('instCat').value;
+                const startDate = document.getElementById('instStart').value;
+                const note = document.getElementById('instNote').value.trim();
+
+                if (!name) { showToast('יש להזין שם'); return; }
+                if (!monthlyAmount || monthlyAmount <= 0) { showToast('סכום חודשי לא תקין'); return; }
+                if (!totalPayments || totalPayments < 1) { showToast('מספר תשלומים לא תקין'); return; }
+                if (!categoryId) { showToast('יש לבחור קטגוריה'); return; }
+                if (currentPayment < 0) currentPayment = 0;
+                if (currentPayment > totalPayments) currentPayment = totalPayments;
+
+                const updated = { ...p, name, monthlyAmount, totalPayments, currentPayment, categoryId, startDate, note };
+                if (isEdit) {
+                    const idx = state.installments.findIndex(x => x.id === p.id);
+                    state.installments[idx] = updated;
+                } else {
+                    state.installments.push(updated);
+                }
+                saveState();
+                renderInstallments();
+                renderDashboard();
+                closeModal();
+                showToast(isEdit ? 'עודכן' : 'תשלום נוסף');
+            });
+        }
+
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#addInstBtn')) {
+                if (!state.categories.some(c => c.type === 'expense')) {
+                    showToast('צור תחילה לפחות קטגוריית הוצאה אחת');
+                    return;
+                }
+                openInstallmentModal();
+                return;
+            }
+            const inc = e.target.closest('[data-inst-inc]');
+            if (inc) {
+                const p = state.installments.find(x => x.id === inc.dataset.instInc);
+                if (p && p.currentPayment < p.totalPayments) {
+                    p.currentPayment += 1;
+                    saveState(); renderInstallments(); renderDashboard();
+                    if (p.currentPayment >= p.totalPayments) showToast('כל הכבוד, התשלומים הסתיימו!');
+                }
+                return;
+            }
+            const dec = e.target.closest('[data-inst-dec]');
+            if (dec) {
+                const p = state.installments.find(x => x.id === dec.dataset.instDec);
+                if (p && p.currentPayment > 0) {
+                    p.currentPayment -= 1;
+                    saveState(); renderInstallments(); renderDashboard();
+                }
+                return;
+            }
+            const ed = e.target.closest('[data-inst-edit]');
+            if (ed) {
+                const p = state.installments.find(x => x.id === ed.dataset.instEdit);
+                if (p) openInstallmentModal(p);
+                return;
+            }
+            const del = e.target.closest('[data-inst-del]');
+            if (del) {
+                const p = state.installments.find(x => x.id === del.dataset.instDel);
+                if (!p) return;
+                if (!confirm(`למחוק את "${p.name}"?`)) return;
+                state.installments = state.installments.filter(x => x.id !== p.id);
+                saveState(); renderInstallments(); renderDashboard();
+                showToast('נמחק');
+            }
+        });
+
+        document.getElementById('instFilter').addEventListener('click', e => {
+            const b = e.target.closest('button');
+            if (!b) return;
+            instFilter = b.dataset.filter;
+            document.querySelectorAll('#instFilter button').forEach(x => x.classList.toggle('active', x === b));
+            renderInstallments();
+        });
+
         // Page enter hook
         window.onPageEnter = function(page) {
             if (page === 'categories') renderCategoryGrid();
             else if (page === 'transactions') initTransactionsPage();
             else if (page === 'recurring') renderRecurring();
+            else if (page === 'installments') renderInstallments();
         };
 
         // Initial paints for currently-rendered page
         renderCategoryGrid();
         initTransactionsPage();
         renderRecurring();
+        renderInstallments();
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
