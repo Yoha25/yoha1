@@ -592,6 +592,63 @@
         .h-pos { color: var(--income); font-weight: 600; font-variant-numeric: tabular-nums; }
         .h-neg { color: var(--expense); font-weight: 600; font-variant-numeric: tabular-nums; }
 
+        /* Investments */
+        .invest-card {
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 14px;
+            padding: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-sm);
+        }
+        .invest-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .invest-stat {
+            font-size: 0.78rem;
+            color: var(--text-faint);
+        }
+        .invest-stat strong {
+            display: block;
+            color: var(--text);
+            font-size: 0.95rem;
+            font-variant-numeric: tabular-nums;
+            margin-top: 2px;
+            font-weight: 600;
+        }
+        .pl-pos { color: var(--income); }
+        .pl-neg { color: var(--expense); }
+        .alloc-bar {
+            display: flex;
+            height: 10px;
+            border-radius: 99px;
+            overflow: hidden;
+            background: var(--surface-2);
+            margin-top: 8px;
+        }
+        .alloc-bar > div { transition: width 0.3s; }
+        .alloc-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 0.82rem;
+            color: var(--text-soft);
+        }
+        .alloc-legend .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-inline-end: 6px;
+            vertical-align: middle;
+        }
+
         /* Modal */
         .modal-backdrop {
             position: fixed;
@@ -939,7 +996,42 @@
 
             <!-- Investments -->
             <section class="page" id="page-investments">
-                <div class="card"><div class="empty-state"><div class="emoji">📈</div><div>חלק 6 - בקרוב</div></div></div>
+                <div class="dashboard-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">שווי תיק</div>
+                        <div class="stat-value" style="color: var(--info)" id="invValue">₪0</div>
+                        <div class="stat-sub">סך כל השווי הנוכחי</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">סכום שהושקע</div>
+                        <div class="stat-value" id="invInvested">₪0</div>
+                        <div class="stat-sub">העלות הכוללת</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">רווח / הפסד</div>
+                        <div class="stat-value" id="invPL">₪0</div>
+                        <div class="stat-sub" id="invPLPct">—</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">מספר השקעות</div>
+                        <div class="stat-value" id="invCount">0</div>
+                        <div class="stat-sub">פריטים בתיק</div>
+                    </div>
+                </div>
+
+                <div class="card" id="allocCard" style="margin-bottom:18px; display:none;">
+                    <div class="section-title">פיזור התיק</div>
+                    <div class="alloc-bar" id="allocBar"></div>
+                    <div class="alloc-legend" id="allocLegend"></div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">
+                        <span>השקעות</span>
+                        <button class="btn btn-primary btn-sm" id="addInvBtn">+ השקעה חדשה</button>
+                    </div>
+                    <div class="list" id="invList"></div>
+                </div>
             </section>
 
             <!-- Categories -->
@@ -2075,6 +2167,229 @@
             renderDebts();
         });
 
+        // ========== Investments ==========
+        const INV_TYPES = [
+            { id: 'stocks',  name: 'מניות',     icon: '📈', color: '#a0c4ff' },
+            { id: 'funds',   name: 'קרנות',     icon: '📊', color: '#bdb2ff' },
+            { id: 'crypto',  name: 'קריפטו',    icon: '🪙', color: '#ffd6a5' },
+            { id: 'realest', name: "נדל\"ן",    icon: '🏠', color: '#caffbf' },
+            { id: 'bonds',   name: "אג\"ח",     icon: '🏦', color: '#9bf6ff' },
+            { id: 'savings', name: 'חיסכון',    icon: '💰', color: '#fdffb6' },
+            { id: 'other',   name: 'אחר',       icon: '✨', color: '#cdb4db' }
+        ];
+        function getInvType(id) {
+            return INV_TYPES.find(t => t.id === id) || INV_TYPES[INV_TYPES.length-1];
+        }
+
+        function renderInvestments() {
+            const list = document.getElementById('invList');
+            if (!list) return;
+
+            const items = [...state.investments];
+            const totalInvested = items.reduce((s,i) => s + Number(i.amount), 0);
+            const totalValue    = items.reduce((s,i) => s + Number(i.currentValue), 0);
+            const pl = totalValue - totalInvested;
+            const plPct = totalInvested > 0 ? (pl / totalInvested) * 100 : 0;
+
+            document.getElementById('invValue').textContent = fmtCurrency(totalValue);
+            document.getElementById('invInvested').textContent = fmtCurrency(totalInvested);
+            const plEl = document.getElementById('invPL');
+            const plPctEl = document.getElementById('invPLPct');
+            plEl.textContent = (pl >= 0 ? '+' : '−') + fmtCurrency(Math.abs(pl));
+            plEl.style.color = pl > 0 ? 'var(--income)' : (pl < 0 ? 'var(--expense)' : 'var(--text)');
+            plPctEl.textContent = totalInvested > 0 ? `${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%` : '—';
+            document.getElementById('invCount').textContent = items.length;
+
+            // Allocation
+            const allocCard = document.getElementById('allocCard');
+            const allocBar = document.getElementById('allocBar');
+            const allocLegend = document.getElementById('allocLegend');
+            if (totalValue > 0 && items.length) {
+                const byType = {};
+                items.forEach(i => {
+                    const t = getInvType(i.type);
+                    byType[t.id] = byType[t.id] || { type: t, value: 0 };
+                    byType[t.id].value += Number(i.currentValue);
+                });
+                const slices = Object.values(byType).sort((a,b) => b.value - a.value);
+                allocBar.innerHTML = slices.map(s => {
+                    const pct = (s.value / totalValue) * 100;
+                    return `<div title="${s.type.name} ${pct.toFixed(1)}%" style="width:${pct}%; background:${s.type.color}"></div>`;
+                }).join('');
+                allocLegend.innerHTML = slices.map(s => {
+                    const pct = (s.value / totalValue) * 100;
+                    return `<div><span class="dot" style="background:${s.type.color}"></span>${s.type.icon} ${escapeHtml(s.type.name)} · ${pct.toFixed(1)}% · ${fmtCurrency(s.value)}</div>`;
+                }).join('');
+                allocCard.style.display = 'block';
+            } else {
+                allocCard.style.display = 'none';
+            }
+
+            if (!items.length) {
+                list.innerHTML = `<div class="empty-state"><div class="emoji">📈</div><div>אין השקעות. הוסף את הראשונה.</div></div>`;
+                return;
+            }
+
+            const sorted = [...items].sort((a,b) => Number(b.currentValue) - Number(a.currentValue));
+            list.innerHTML = sorted.map(i => {
+                const t = getInvType(i.type);
+                const itemPL = Number(i.currentValue) - Number(i.amount);
+                const itemPct = i.amount > 0 ? (itemPL / Number(i.amount)) * 100 : 0;
+                const plClass = itemPL >= 0 ? 'pl-pos' : 'pl-neg';
+                const sign = itemPL >= 0 ? '+' : '−';
+                return `
+                    <div class="invest-card">
+                        <div class="row-icon" style="background:${t.color}55; align-self:start">${t.icon}</div>
+                        <div>
+                            <div class="inst-head">
+                                <div>
+                                    <div class="inst-title">${escapeHtml(i.name)}</div>
+                                    <div class="inst-meta">${t.icon} ${escapeHtml(t.name)}${i.note ? ' · '+escapeHtml(i.note) : ''}${i.date ? ' · נרכש ב-'+formatDate(i.date) : ''}</div>
+                                </div>
+                                <div style="text-align:left;">
+                                    <div style="font-weight:700; font-size:1.1rem;">${fmtCurrency(i.currentValue)}</div>
+                                    <div class="inst-meta ${plClass}">${sign}${fmtCurrency(Math.abs(itemPL))} (${itemPct >= 0 ? '+' : ''}${itemPct.toFixed(2)}%)</div>
+                                </div>
+                            </div>
+                            <div class="invest-row">
+                                <div class="invest-stat">הושקע <strong>${fmtCurrency(i.amount)}</strong></div>
+                                <div class="invest-stat">שווי נוכחי <strong>${fmtCurrency(i.currentValue)}</strong></div>
+                                <div class="invest-stat">רווח/הפסד <strong class="${plClass}">${sign}${fmtCurrency(Math.abs(itemPL))}</strong></div>
+                            </div>
+                            <div class="inst-controls">
+                                <button class="btn btn-sm btn-primary" data-inv-update="${i.id}">🔄 עדכון שווי</button>
+                                <button class="btn btn-sm" data-inv-edit="${i.id}">✏️ עריכה</button>
+                                <button class="btn btn-sm btn-danger" data-inv-del="${i.id}">🗑️ מחק</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openInvestmentModal(existing = null) {
+            const isEdit = !!existing;
+            const i = existing || {
+                id: uid('inv'), name: '', type: 'stocks', amount: '', currentValue: '',
+                note: '', date: todayISO()
+            };
+            openModal(`
+                <h3>${isEdit ? 'עריכת השקעה' : 'השקעה חדשה'}</h3>
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="field" style="grid-column: span 2;">
+                        <label>שם</label>
+                        <input class="input" id="invName" value="${escapeHtml(i.name)}" placeholder="למשל: S&P 500, דירה ברמת גן">
+                    </div>
+                    <div class="field">
+                        <label>סוג</label>
+                        <select class="select" id="invType">
+                            ${INV_TYPES.map(t => `<option value="${t.id}" ${t.id===i.type?'selected':''}>${t.icon} ${escapeHtml(t.name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>תאריך רכישה</label>
+                        <input class="input" type="date" id="invDate" value="${i.date}">
+                    </div>
+                    <div class="field">
+                        <label>סכום שהושקע</label>
+                        <input class="input" type="number" step="0.01" min="0" id="invAmount" value="${i.amount}">
+                    </div>
+                    <div class="field">
+                        <label>שווי נוכחי</label>
+                        <input class="input" type="number" step="0.01" min="0" id="invCurrent" value="${i.currentValue !== '' ? i.currentValue : i.amount}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                        <label>הערה (אופציונלי)</label>
+                        <input class="input" id="invNote" value="${escapeHtml(i.note || '')}">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="invCancel">ביטול</button>
+                    <button class="btn btn-primary" id="invSave">${isEdit?'שמור':'הוסף'}</button>
+                </div>
+            `);
+            document.getElementById('invCancel').addEventListener('click', closeModal);
+            document.getElementById('invSave').addEventListener('click', () => {
+                const name = document.getElementById('invName').value.trim();
+                const type = document.getElementById('invType').value;
+                const amount = parseFloat(document.getElementById('invAmount').value);
+                const currentValue = parseFloat(document.getElementById('invCurrent').value);
+                const date = document.getElementById('invDate').value;
+                const note = document.getElementById('invNote').value.trim();
+
+                if (!name) { showToast('יש להזין שם'); return; }
+                if (!(amount >= 0)) { showToast('סכום השקעה לא תקין'); return; }
+                if (!(currentValue >= 0)) { showToast('שווי נוכחי לא תקין'); return; }
+
+                const updated = { ...i, name, type, amount, currentValue, date, note };
+                if (isEdit) {
+                    const idx = state.investments.findIndex(x => x.id === i.id);
+                    state.investments[idx] = updated;
+                } else {
+                    state.investments.push(updated);
+                }
+                saveState();
+                renderInvestments();
+                renderDashboard();
+                closeModal();
+                showToast(isEdit ? 'עודכן' : 'נוסף');
+            });
+        }
+
+        function openInvUpdateModal(inv) {
+            openModal(`
+                <h3>עדכון שווי</h3>
+                <div style="background:var(--surface-2); padding:10px 12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:0.88rem;">
+                    <strong>${escapeHtml(inv.name)}</strong> · שווי קודם: ${fmtCurrency(inv.currentValue)}
+                </div>
+                <div class="field" style="margin-bottom:12px;">
+                    <label>שווי נוכחי חדש</label>
+                    <input class="input" type="number" step="0.01" min="0" id="invuVal" value="${inv.currentValue}">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="invuCancel">ביטול</button>
+                    <button class="btn btn-primary" id="invuSave">עדכן</button>
+                </div>
+            `);
+            setTimeout(() => { const el = document.getElementById('invuVal'); el.focus(); el.select(); }, 50);
+            document.getElementById('invuCancel').addEventListener('click', closeModal);
+            document.getElementById('invuSave').addEventListener('click', () => {
+                const v = parseFloat(document.getElementById('invuVal').value);
+                if (!(v >= 0)) { showToast('שווי לא תקין'); return; }
+                inv.currentValue = v;
+                saveState();
+                renderInvestments();
+                renderDashboard();
+                closeModal();
+                showToast('שווי עודכן');
+            });
+        }
+
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#addInvBtn')) { openInvestmentModal(); return; }
+            const upd = e.target.closest('[data-inv-update]');
+            if (upd) {
+                const i = state.investments.find(x => x.id === upd.dataset.invUpdate);
+                if (i) openInvUpdateModal(i);
+                return;
+            }
+            const ed = e.target.closest('[data-inv-edit]');
+            if (ed) {
+                const i = state.investments.find(x => x.id === ed.dataset.invEdit);
+                if (i) openInvestmentModal(i);
+                return;
+            }
+            const del = e.target.closest('[data-inv-del]');
+            if (del) {
+                const i = state.investments.find(x => x.id === del.dataset.invDel);
+                if (!i) return;
+                if (!confirm(`למחוק את "${i.name}"?`)) return;
+                state.investments = state.investments.filter(x => x.id !== i.id);
+                saveState(); renderInvestments(); renderDashboard();
+                showToast('נמחק');
+            }
+        });
+
         // Page enter hook
         window.onPageEnter = function(page) {
             if (page === 'categories') renderCategoryGrid();
@@ -2082,6 +2397,7 @@
             else if (page === 'recurring') renderRecurring();
             else if (page === 'installments') renderInstallments();
             else if (page === 'debts') renderDebts();
+            else if (page === 'investments') renderInvestments();
         };
 
         // Initial paints for currently-rendered page
@@ -2090,6 +2406,7 @@
         renderRecurring();
         renderInstallments();
         renderDebts();
+        renderInvestments();
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
