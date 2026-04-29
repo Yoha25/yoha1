@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>מעקב כספים אישי</title>
+    <meta name="theme-color" content="#6c8eff">
+    <meta name="description" content="מעקב הוצאות, הכנסות, השקעות וחובות">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="הכספים שלי">
+    <meta name="mobile-web-app-capable" content="yes">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -443,14 +452,45 @@
         }
         .pill {
             display: flex;
-            align-items: center;
-            gap: 10px;
+            flex-direction: column;
+            gap: 8px;
             padding: 12px 14px;
             border-radius: var(--radius-sm);
             border: 1px solid var(--border-soft);
             background: var(--surface);
             position: relative;
         }
+        .pill-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .pill-budget {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.75rem;
+            color: var(--text-soft);
+        }
+        .pill-budget-bar {
+            height: 6px;
+            border-radius: 99px;
+            background: var(--surface-2);
+            overflow: hidden;
+        }
+        .pill-budget-bar > div {
+            height: 100%;
+            transition: width 0.3s;
+            border-radius: 99px;
+        }
+        .pill-budget-meta {
+            display: flex;
+            justify-content: space-between;
+            font-variant-numeric: tabular-nums;
+        }
+        .budget-ok    { color: var(--income); }
+        .budget-warn  { color: var(--warning); }
+        .budget-over  { color: var(--expense); }
         .pill .pill-icon {
             width: 36px;
             height: 36px;
@@ -889,6 +929,9 @@
                     <span class="nav-icon">☁️</span><span>סנכרון</span>
                 </button>
             </nav>
+            <button class="btn btn-primary" id="installBtn" style="display:none; margin-top:14px; width:100%; justify-content:center;">
+                <span style="margin-inline-end:6px;">📱</span>התקן כאפליקציה
+            </button>
         </aside>
         <div class="sidebar-backdrop" id="backdrop"></div>
 
@@ -974,6 +1017,14 @@
                         <div class="stat-value" id="statInstMonthly">₪0</div>
                         <div class="stat-sub" id="statInstSub">—</div>
                     </div>
+                </div>
+
+                <div class="card" id="dashBudgetCard" style="margin-bottom:18px; display:none;">
+                    <div class="section-title">
+                        <span>תקציב החודש</span>
+                        <span style="font-size:0.8rem; color:var(--text-faint); font-weight:400;" id="dashBudgetSummary"></span>
+                    </div>
+                    <div id="dashBudgetList"></div>
                 </div>
 
                 <div class="dash-cols">
@@ -1518,6 +1569,28 @@
             return monthly * Math.max(0, months);
         }
 
+        // Total expense (transactions + recurring + installments) for a category in [from, to]
+        function categorySpentInRange(catId, fromISO, toISO) {
+            const tx = state.transactions
+                .filter(t => t.type === 'expense' && t.categoryId === catId && txInRange(t, fromISO, toISO))
+                .reduce((s, t) => s + Number(t.amount), 0);
+            const rec = state.recurring
+                .filter(r => r.categoryId === catId)
+                .reduce((s, r) => s + recurringCostInRange(r, fromISO, toISO), 0);
+            const inst = state.installments
+                .filter(p => p.categoryId === catId)
+                .reduce((s, p) => s + installmentCostInRange(p, fromISO, toISO), 0);
+            return tx + rec + inst;
+        }
+
+        // Spent this month in a category (used by budget tracker)
+        function categorySpentThisMonth(catId) {
+            const now = new Date();
+            const from = isoFor(startOfMonth(now));
+            const to = isoFor(now);
+            return categorySpentInRange(catId, from, to);
+        }
+
         // Sum of installment payments that already happened during [from, to]
         function installmentCostInRange(p, fromISO, toISO) {
             if (!p.startDate) return 0;
@@ -1625,6 +1698,9 @@
             document.getElementById('statRecSub').textContent = `${recActiveList.length} מנויים פעילים`;
             document.getElementById('statInstMonthly').textContent = fmtCurrency(instMonthlyRate);
             document.getElementById('statInstSub').textContent = `${instActiveList.length} תוכניות פעילות`;
+
+            // ---- Budget tracker (always current month) ----
+            renderBudgetTracker();
 
             // ---- Categories breakdown ----
             renderDashCategories(rangeTx, bounds);
@@ -1736,6 +1812,55 @@
                             </div>
                         </div>
                         <div style="font-weight:600; color:${color}; font-variant-numeric:tabular-nums;">${sign}${fmtCurrency(t.amount)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderBudgetTracker() {
+            const card = document.getElementById('dashBudgetCard');
+            const list = document.getElementById('dashBudgetList');
+            const summary = document.getElementById('dashBudgetSummary');
+            if (!card || !list) return;
+
+            const cats = state.categories.filter(c => c.type === 'expense' && Number.isFinite(Number(c.budget)) && Number(c.budget) > 0);
+            if (!cats.length) {
+                card.style.display = 'none';
+                return;
+            }
+            card.style.display = 'block';
+
+            const items = cats.map(c => {
+                const spent = categorySpentThisMonth(c.id);
+                const budget = Number(c.budget);
+                return { cat: c, spent, budget, pct: (spent / budget) * 100 };
+            }).sort((a, b) => b.pct - a.pct);
+
+            const totalBudget = items.reduce((s, i) => s + i.budget, 0);
+            const totalSpent = items.reduce((s, i) => s + i.spent, 0);
+            const totalPct = (totalSpent / totalBudget) * 100;
+            const overCount = items.filter(i => i.pct >= 100).length;
+            summary.textContent = `${fmtCurrency(totalSpent)} / ${fmtCurrency(totalBudget)} · ${totalPct.toFixed(0)}%${overCount ? ' · ' + overCount + ' חרגו' : ''}`;
+
+            list.innerHTML = items.map(i => {
+                const cls = i.pct >= 100 ? 'budget-over' : i.pct >= 75 ? 'budget-warn' : 'budget-ok';
+                const barColor = i.pct >= 100 ? 'var(--expense)' : i.pct >= 75 ? 'var(--warning)' : 'var(--income)';
+                const w = Math.min(100, i.pct);
+                const remaining = i.budget - i.spent;
+                const remText = remaining >= 0
+                    ? `נותרו ${fmtCurrency(remaining)}`
+                    : `<span class="budget-over">חריגה של ${fmtCurrency(Math.abs(remaining))}</span>`;
+                return `
+                    <div class="compare-row">
+                        <div class="row-icon" style="background:${i.cat.color}33;">${i.cat.icon}</div>
+                        <div>
+                            <div class="compare-meta">
+                                <span class="name">${escapeHtml(i.cat.name)}</span>
+                                <span class="val">${fmtCurrency(i.spent)} / ${fmtCurrency(i.budget)} · <span class="${cls}">${i.pct.toFixed(0)}%</span></span>
+                            </div>
+                            <div class="compare-bar"><div style="width:${w}%; background:${barColor}"></div></div>
+                            <div style="font-size:0.74rem; color:var(--text-faint); margin-top:3px;">${remText}</div>
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -1958,19 +2083,43 @@
             const incGrid = document.getElementById('incCatGrid');
             if (!expGrid || !incGrid) return;
 
-            const renderPill = c => `
-                <div class="pill" style="background:${c.color}1a; border-color:${c.color}55;">
-                    <div class="pill-icon" style="background:${c.color}33;">${c.icon}</div>
-                    <div class="pill-info">
-                        <div class="pill-name">${escapeHtml(c.name)}</div>
-                        <div class="pill-type">${countTxByCategory(c.id)} תנועות</div>
+            const renderPill = c => {
+                const hasBudget = c.type === 'expense' && Number.isFinite(Number(c.budget)) && Number(c.budget) > 0;
+                let budgetHtml = '';
+                if (hasBudget) {
+                    const spent = categorySpentThisMonth(c.id);
+                    const budget = Number(c.budget);
+                    const pct = (spent / budget) * 100;
+                    const cls = pct >= 100 ? 'budget-over' : pct >= 75 ? 'budget-warn' : 'budget-ok';
+                    const barColor = pct >= 100 ? 'var(--expense)' : pct >= 75 ? 'var(--warning)' : 'var(--income)';
+                    const w = Math.min(100, pct);
+                    budgetHtml = `
+                        <div class="pill-budget">
+                            <div class="pill-budget-bar"><div style="width:${w}%; background:${barColor}"></div></div>
+                            <div class="pill-budget-meta">
+                                <span>${fmtCurrency(spent)} / ${fmtCurrency(budget)}</span>
+                                <span class="${cls}">${pct.toFixed(0)}%</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                return `
+                    <div class="pill" style="background:${c.color}1a; border-color:${c.color}55;">
+                        <div class="pill-row">
+                            <div class="pill-icon" style="background:${c.color}33;">${c.icon}</div>
+                            <div class="pill-info">
+                                <div class="pill-name">${escapeHtml(c.name)}</div>
+                                <div class="pill-type">${countTxByCategory(c.id)} תנועות${hasBudget ? '' : (c.type==='expense' ? ' · ללא תקציב' : '')}</div>
+                            </div>
+                            <div class="pill-actions">
+                                <button class="icon-btn" data-edit-cat="${c.id}" title="עריכה">✏️</button>
+                                <button class="icon-btn danger" data-del-cat="${c.id}" title="מחיקה">🗑️</button>
+                            </div>
+                        </div>
+                        ${budgetHtml}
                     </div>
-                    <div class="pill-actions">
-                        <button class="icon-btn" data-edit-cat="${c.id}" title="עריכה">✏️</button>
-                        <button class="icon-btn danger" data-del-cat="${c.id}" title="מחיקה">🗑️</button>
-                    </div>
-                </div>
-            `;
+                `;
+            };
 
             const expCats = state.categories.filter(c => c.type === 'expense');
             const incCats = state.categories.filter(c => c.type === 'income');
@@ -2020,6 +2169,10 @@
                         ${CAT_COLORS.map(col => `<button type="button" data-color="${col}" class="${col===cat.color?'selected':''}" style="background:${col}"></button>`).join('')}
                     </div>
                 </div>
+                <div class="field" id="catBudgetField" style="margin-bottom:12px; display:${cat.type==='expense'?'flex':'none'};">
+                    <label>תקציב חודשי (אופציונלי)</label>
+                    <input class="input" type="number" min="0" step="0.01" id="catBudget" value="${cat.budget != null ? cat.budget : ''}" placeholder="ללא תקציב">
+                </div>
                 <div class="modal-actions">
                     <button class="btn" id="catCancel">ביטול</button>
                     <button class="btn btn-primary" id="catSave">${isEdit?'שמור':'הוסף'}</button>
@@ -2028,11 +2181,17 @@
 
             let chosen = { ...cat };
 
+            const updateBudgetVisible = () => {
+                const f = document.getElementById('catBudgetField');
+                if (f) f.style.display = chosen.type === 'expense' ? 'flex' : 'none';
+            };
+
             document.getElementById('catTypeToggle').addEventListener('click', e => {
                 const b = e.target.closest('button');
                 if (!b) return;
                 chosen.type = b.dataset.type;
                 document.querySelectorAll('#catTypeToggle button').forEach(x => x.classList.toggle('active', x === b));
+                updateBudgetVisible();
             });
             document.getElementById('emojiPicker').addEventListener('click', e => {
                 const b = e.target.closest('button');
@@ -2051,6 +2210,9 @@
                 const name = document.getElementById('catName').value.trim();
                 if (!name) { showToast('יש להזין שם'); return; }
                 chosen.name = name;
+                const budgetRaw = document.getElementById('catBudget')?.value;
+                const budgetNum = budgetRaw === '' || budgetRaw == null ? null : parseFloat(budgetRaw);
+                chosen.budget = (chosen.type === 'expense' && Number.isFinite(budgetNum) && budgetNum > 0) ? budgetNum : null;
                 if (isEdit) {
                     const idx = state.categories.findIndex(c => c.id === chosen.id);
                     state.categories[idx] = chosen;
@@ -2060,6 +2222,7 @@
                 saveState();
                 renderCategoryGrid();
                 refreshCategorySelectors();
+                renderDashboard();
                 closeModal();
                 showToast(isEdit ? 'הקטגוריה עודכנה' : 'קטגוריה נוספה');
             });
@@ -3615,6 +3778,42 @@
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
+
+        // ========== PWA: register service worker ==========
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js').catch(err => {
+                    console.warn('Service worker registration failed:', err);
+                });
+            });
+        }
+
+        // ========== PWA: install prompt button ==========
+        let deferredInstall = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstall = e;
+            const btn = document.getElementById('installBtn');
+            if (btn) btn.style.display = 'inline-flex';
+        });
+        window.addEventListener('appinstalled', () => {
+            deferredInstall = null;
+            const btn = document.getElementById('installBtn');
+            if (btn) btn.style.display = 'none';
+            showToast('האפליקציה הותקנה');
+        });
+        document.body.addEventListener('click', async (e) => {
+            const b = e.target.closest('#installBtn');
+            if (!b) return;
+            if (!deferredInstall) {
+                showToast('בדפדפן הזה אפשר להתקין דרך תפריט הדפדפן: "Install" או "Add to Home Screen"');
+                return;
+            }
+            deferredInstall.prompt();
+            try { await deferredInstall.userChoice; } catch {}
+            deferredInstall = null;
+            b.style.display = 'none';
+        });
     </script>
 </body>
 </html>
