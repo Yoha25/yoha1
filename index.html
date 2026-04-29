@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>מעקב כספים אישי</title>
+    <meta name="theme-color" content="#6c8eff">
+    <meta name="description" content="מעקב הוצאות, הכנסות, השקעות וחובות">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="הכספים שלי">
+    <meta name="mobile-web-app-capable" content="yes">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -920,6 +929,9 @@
                     <span class="nav-icon">☁️</span><span>סנכרון</span>
                 </button>
             </nav>
+            <button class="btn btn-primary" id="installBtn" style="display:none; margin-top:14px; width:100%; justify-content:center;">
+                <span style="margin-inline-end:6px;">📱</span>התקן כאפליקציה
+            </button>
         </aside>
         <div class="sidebar-backdrop" id="backdrop"></div>
 
@@ -3766,6 +3778,42 @@
 
         // Expose for later parts
         window.financeApp = { state, saveState, uid, fmtCurrency, showToast, navigate, PAGE_META, getCategory, escapeHtml, formatDate, todayISO, openModal, closeModal };
+
+        // ========== PWA: register service worker ==========
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js').catch(err => {
+                    console.warn('Service worker registration failed:', err);
+                });
+            });
+        }
+
+        // ========== PWA: install prompt button ==========
+        let deferredInstall = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstall = e;
+            const btn = document.getElementById('installBtn');
+            if (btn) btn.style.display = 'inline-flex';
+        });
+        window.addEventListener('appinstalled', () => {
+            deferredInstall = null;
+            const btn = document.getElementById('installBtn');
+            if (btn) btn.style.display = 'none';
+            showToast('האפליקציה הותקנה');
+        });
+        document.body.addEventListener('click', async (e) => {
+            const b = e.target.closest('#installBtn');
+            if (!b) return;
+            if (!deferredInstall) {
+                showToast('בדפדפן הזה אפשר להתקין דרך תפריט הדפדפן: "Install" או "Add to Home Screen"');
+                return;
+            }
+            deferredInstall.prompt();
+            try { await deferredInstall.userChoice; } catch {}
+            deferredInstall = null;
+            b.style.display = 'none';
+        });
     </script>
 </body>
 </html>
